@@ -44,6 +44,9 @@ coverage/
 *.sqlite
 *.sqlite-journal
 
+# Push tokens (PAT files, never commit)
+.pace-push-token/
+
 # Local scratch
 scratch/
 tmp/
