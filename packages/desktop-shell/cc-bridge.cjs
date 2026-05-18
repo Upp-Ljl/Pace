@@ -51,13 +51,46 @@ function readGitContext(cwd) {
   const branch    = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], cwd) || null;
   const recentLog = runGit(['log', '-5', '--oneline'], cwd) || '';
   const status    = runGit(['status', '--short'], cwd) || '';
+
+  // Detailed commits (last 10): hash | unix ts | subject | author
+  const detailRaw = runGit(['log', '-10', '--pretty=format:%h|%ct|%s|%an'], cwd) || '';
+  const commits = detailRaw.split('\n').filter(Boolean).map((line) => {
+    const [hash, ts, subject, author] = line.split('|');
+    return {
+      hash: hash || '',
+      ts: ts ? Number(ts) * 1000 : null,
+      subject: subject || '',
+      author: author || '',
+    };
+  });
+
+  // Changed file paths (with status flag)
+  const changedFiles = status.split('\n').filter(Boolean).map((line) => {
+    const flags = line.slice(0, 2);
+    const filePath = line.slice(3).trim();
+    return { flags: flags.trim(), path: filePath };
+  });
+
+  // Upstream comparison (ahead / behind) — only works if upstream is set
+  let ahead = null, behind = null;
+  const abRaw = runGit(['rev-list', '--left-right', '--count', `HEAD...@{upstream}`], cwd);
+  if (abRaw && /^\d+\s+\d+$/.test(abRaw.trim())) {
+    const [a, b] = abRaw.trim().split(/\s+/).map(Number);
+    ahead = a;
+    behind = b;
+  }
+
   return {
     available:   true,
     git_root:    path.normalize(topLevel),
     git_remote:  remoteUrl,
     git_branch:  branch,
     recent_log:  recentLog.split('\n').filter(Boolean).slice(0, 5),
-    dirty_count: status.split('\n').filter(Boolean).length,
+    dirty_count: changedFiles.length,
+    commits,        // [{hash, ts (ms), subject, author}]
+    changed_files: changedFiles, // [{flags, path}]
+    ahead,          // null = no upstream; number = commits ahead
+    behind,         // null = no upstream; number = commits behind
   };
 }
 

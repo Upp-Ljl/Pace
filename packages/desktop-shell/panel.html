@@ -180,9 +180,90 @@ body {
 }
 
 /* ============================================================
-   NOW — feed of observation cards
+   NOW — pinned commit pane + observation cards feed
    ============================================================ */
-#view-now { padding: 14px 14px 14px; gap: 10px; }
+#view-now { padding: 0; }
+#cards-section { padding: 12px 14px 14px; }
+
+/* Pinned commit history */
+.commit-pane {
+  padding: 10px 14px 12px;
+  background: rgba(18, 22, 25, 0.55);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  backdrop-filter: blur(4px);
+}
+.commit-pane-head {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-bottom: 6px;
+}
+.commit-pane-title {
+  font-family: var(--font);
+  font-size: 9.5px;
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.commit-pane-meta {
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.commit-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column;
+  gap: 2px;
+}
+.commit-row {
+  display: flex; align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-micro);
+}
+.commit-row:hover {
+  background: var(--accent-bg);
+  color: var(--text-primary);
+}
+.commit-hash {
+  font-family: var(--font);
+  font-size: 10.5px;
+  color: var(--accent);
+  flex: 0 0 56px;
+}
+.commit-time {
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+.commit-subject {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.commit-empty {
+  font-style: italic;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 6px 8px;
+}
+.commit-row.fresh {
+  animation: commitFlash 1.6s var(--ease-out);
+}
+@keyframes commitFlash {
+  0%   { background: rgba(111, 181, 176, 0.35); }
+  100% { background: transparent; }
+}
 
 .card {
   background: var(--bg-card);
@@ -695,7 +776,20 @@ body {
 
   <!-- VIEW: NOW -->
   <div class="view" id="view-now">
-    <!-- cards inserted by panel.js -->
+    <!-- PINNED: commit history -->
+    <section id="commit-pane" class="commit-pane">
+      <div class="commit-pane-head">
+        <span class="commit-pane-title">最近提交</span>
+        <span class="commit-pane-meta" id="commit-pane-meta">—</span>
+      </div>
+      <ul class="commit-list" id="commit-list">
+        <li class="commit-empty">读取中…</li>
+      </ul>
+    </section>
+    <!-- Cards section -->
+    <section id="cards-section">
+      <!-- cards inserted by panel.js -->
+    </section>
   </div>
 
   <!-- VIEW: TEAM -->

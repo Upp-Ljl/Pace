@@ -19,6 +19,9 @@
 const headerMetaEl = document.getElementById('meta');
 const tabsEl       = document.getElementById('tabs');
 const nowView      = document.getElementById('view-now');
+const cardsSection = document.getElementById('cards-section');
+const commitListEl = document.getElementById('commit-list');
+const commitPaneMetaEl = document.getElementById('commit-pane-meta');
 const teamView     = document.getElementById('view-team');
 const identitiesView = document.getElementById('view-identities');
 const askView      = document.getElementById('view-ask');
@@ -213,6 +216,110 @@ function generateCards(snapshot) {
     }
   }
 
+  // Card: upstream gap — ahead
+  if (ctx.git && ctx.git.available && typeof ctx.git.ahead === 'number' && ctx.git.ahead > 0) {
+    cards.push({
+      id: 'ahead-of-origin',
+      icon: '↗',
+      title: `本地比 origin/${ctx.git.git_branch} 领先 ${ctx.git.ahead} 个 commit`,
+      sub: '还没 push',
+      seed: `用户本地有 ${ctx.git.ahead} 个 commit 没 push 到 origin。${teamLine ? '团队：' + teamLine + '。' : ''}从协作风险角度，淡淡观察一下这个状态。80 字内。`,
+      priority: 1,
+    });
+  }
+  // Card: upstream gap — behind
+  if (ctx.git && ctx.git.available && typeof ctx.git.behind === 'number' && ctx.git.behind > 0) {
+    cards.push({
+      id: 'behind-origin',
+      icon: '↘',
+      title: `本地落后 origin/${ctx.git.git_branch} ${ctx.git.behind} 个 commit`,
+      sub: '还没拉下来——可能即将冲突',
+      seed: `用户本地落后远端 ${ctx.git.behind} 个 commit 没 pull。${teamLine ? '团队：' + teamLine + '。' : ''}观察一下风险，80 字内。`,
+      priority: 0,
+    });
+  }
+
+  // Card: time-since-last-commit
+  if (ctx.git && ctx.git.available && ctx.git.commits && ctx.git.commits.length) {
+    const lastTs = ctx.git.commits[0].ts;
+    if (lastTs) {
+      const ageMs = Date.now() - lastTs;
+      if (ageMs > 2 * 3600_000 && ctx.git.dirty_count > 0) {
+        cards.push({
+          id: 'long-since-commit',
+          icon: '⏳',
+          title: `距上次 commit ${timeAgo(lastTs)}`,
+          sub: `工作区还有 ${ctx.git.dirty_count} 个改动 — 长时间没 commit 风险有`,
+          seed: `用户上次 commit 是 ${timeAgo(lastTs)}，工作区还堆着 ${ctx.git.dirty_count} 个未提交改动。${teamLine ? '团队：' + teamLine + '。' : ''}从工作节奏角度，淡淡说几句风险和下一步。80 字内。`,
+          priority: 2,
+        });
+      }
+    }
+  }
+
+  // Card: package.json touched (semantic file watch)
+  if (ctx.git && ctx.git.available && ctx.git.changed_files) {
+    const pkgTouched = ctx.git.changed_files.some((f) => /(^|[\\/])package\.json$/.test(f.path));
+    if (pkgTouched) {
+      cards.push({
+        id: 'pkg-json-touched',
+        icon: '📦',
+        title: '`package.json` 有改动',
+        sub: '记得 npm install 才能让依赖落地',
+        seed: null,
+        priority: 4,
+      });
+    }
+    // Card: docs / README untouched when code changed substantively
+    const codeChanged = ctx.git.changed_files.some((f) => /\.(c?js|mjs|ts|tsx|jsx|cjs|py|go|rs|java|html|css|cjs)$/i.test(f.path));
+    const docsChanged = ctx.git.changed_files.some((f) => /(README|CHANGELOG|docs[\\/])/i.test(f.path));
+    if (codeChanged && !docsChanged && ctx.git.dirty_count >= 3) {
+      cards.push({
+        id: 'docs-untouched',
+        icon: '📖',
+        title: '代码改了，文档没动',
+        sub: 'README / CHANGELOG / docs/ 都没在 diff 里',
+        seed: `用户改了 ${ctx.git.dirty_count} 个代码文件，但 README / CHANGELOG / docs 都没碰。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMP "质量管理" 或 "沟通管理" 视角，淡淡观察这个状态——什么时候该同步文档？80 字内。`,
+        priority: 5,
+      });
+    }
+    // Card: tests untouched
+    const testsChanged = ctx.git.changed_files.some((f) => /(\.test\.|\.spec\.|__tests__[\\/]|scripts[\\/]smoke-|tests?[\\/])/i.test(f.path));
+    if (codeChanged && !testsChanged && ctx.git.dirty_count >= 4) {
+      cards.push({
+        id: 'tests-untouched',
+        icon: '🧪',
+        title: '代码改了，测试没跟',
+        sub: '改了 ' + ctx.git.dirty_count + ' 个文件但 test/smoke 没动',
+        seed: `用户改了 ${ctx.git.dirty_count} 个代码文件但测试 / smoke 都没动。${teamLine ? '团队：' + teamLine + '。' : ''}从质量管理角度，淡淡观察。80 字内。`,
+        priority: 5,
+      });
+    }
+  }
+
+  // Card: scope drift — recent commit themes mixed across categories
+  if (ctx.git && ctx.git.available && ctx.git.commits && ctx.git.commits.length >= 5) {
+    const themeCounts = {};
+    for (const c of ctx.git.commits.slice(0, 8)) {
+      const m = /^(feat|fix|docs|test|refactor|chore|style|ui|config|perf|wire|pivot|import)/i.exec(c.subject || '');
+      if (m) {
+        const k = m[1].toLowerCase();
+        themeCounts[k] = (themeCounts[k] || 0) + 1;
+      }
+    }
+    const themeKeys = Object.keys(themeCounts);
+    if (themeKeys.length >= 4) {
+      cards.push({
+        id: 'scope-drift',
+        icon: '🌀',
+        title: `最近 commit 主题分散`,
+        sub: themeKeys.slice(0, 5).join(' · ') + ' 都有',
+        seed: `用户最近 8 个 commit 主题分散：${themeKeys.join(', ')}。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMP 范围管理角度看，这是 scope creep 还是合理的多线并进？淡淡观察，80 字内。`,
+        priority: 6,
+      });
+    }
+  }
+
   // Card: cc activity
   if (ctx.cc_session) {
     cards.push({
@@ -266,20 +373,92 @@ function generateCards(snapshot) {
     .sort((a, b) => (a.priority || 99) - (b.priority || 99));
 }
 
+// --- Render commit pane (pinned at top of Now tab) ---
+
+let lastSeenCommitHash = null;
+
+function renderCommitPane(ctx) {
+  const commits = (ctx.git && ctx.git.commits) || [];
+  commitListEl.innerHTML = '';
+
+  // Meta line: total + ahead/behind
+  const metaParts = [];
+  if (ctx.git && ctx.git.available) {
+    if (typeof ctx.git.ahead === 'number') {
+      if (ctx.git.ahead > 0) metaParts.push(`领先 ${ctx.git.ahead}`);
+      if (ctx.git.behind > 0) metaParts.push(`落后 ${ctx.git.behind}`);
+      if (ctx.git.ahead === 0 && ctx.git.behind === 0) metaParts.push('与 origin 同步');
+    }
+    if (typeof ctx.git.dirty_count === 'number' && ctx.git.dirty_count > 0) {
+      metaParts.push(`${ctx.git.dirty_count} 改动未提交`);
+    }
+  }
+  commitPaneMetaEl.textContent = metaParts.length ? metaParts.join(' · ') : '';
+
+  if (!commits.length) {
+    const empty = document.createElement('li');
+    empty.className = 'commit-empty';
+    empty.textContent = ctx.git && ctx.git.available ? '没有 commit 历史' : '当前目录不是 git 仓库';
+    commitListEl.appendChild(empty);
+    return;
+  }
+
+  // Detect new commits (top hash changed) — flash animation
+  const newest = commits[0] && commits[0].hash;
+  const isFresh = (lastSeenCommitHash && newest && lastSeenCommitHash !== newest);
+  if (newest) lastSeenCommitHash = newest;
+
+  // Show up to 6 most-recent
+  commits.slice(0, 6).forEach((c, i) => {
+    const li = document.createElement('li');
+    li.className = 'commit-row' + (isFresh && i === 0 ? ' fresh' : '');
+    li.title = `${c.hash} · ${c.subject}${c.author ? ' · ' + c.author : ''}`;
+
+    const hashEl = document.createElement('span');
+    hashEl.className = 'commit-hash';
+    hashEl.textContent = c.hash;
+    li.appendChild(hashEl);
+
+    const timeEl = document.createElement('span');
+    timeEl.className = 'commit-time';
+    timeEl.textContent = c.ts ? timeAgo(c.ts) : '';
+    li.appendChild(timeEl);
+
+    const subjectEl = document.createElement('span');
+    subjectEl.className = 'commit-subject';
+    subjectEl.textContent = c.subject;
+    li.appendChild(subjectEl);
+
+    // Click commit → mentor weighs in on what this commit means
+    li.addEventListener('click', () => askCommitMentor(c));
+
+    commitListEl.appendChild(li);
+  });
+}
+
+async function askCommitMentor(commit) {
+  // Switch to Ask tab, prefill, send
+  switchTab('ask');
+  const prompt = `刚看 commit \`${commit.hash} ${commit.subject}\`（${commit.author}, ${commit.ts ? new Date(commit.ts).toISOString() : ''})。这个 commit 在 PMP 视角下是什么阶段的动作？是否要做什么后续？请简短观察，120 字内。`;
+  inputEl.value = prompt;
+  send();
+}
+
 // --- Render Now feed ---
 function renderNowFeed(snapshot) {
+  renderCommitPane(snapshot.ctx);
   const cards = generateCards(snapshot);
   nowCountEl.textContent = cards.length ? `· ${cards.length}` : '';
-  nowView.innerHTML = '';
+  cardsSection.innerHTML = '';
   if (!cards.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.innerHTML = '<div class="ico">∙</div>这会儿没什么特别的<br><span style="opacity:0.7">git 干净 · cc 没动静 · 也没要紧的事卡着</span>';
-    nowView.appendChild(empty);
+    cardsSection.appendChild(empty);
     return;
   }
   for (const card of cards) {
-    nowView.appendChild(renderCard(card));
+    cardsSection.appendChild(renderCard(card));
   }
 }
 
