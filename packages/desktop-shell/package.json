@@ -1,0 +1,81 @@
+{
+  "name": "@pace/desktop-shell",
+  "version": "0.0.1",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "main": "main.cjs",
+  "description": "Pace — PMP-style mentor for professionals heavily using Claude Code",
+  "dependencies": {
+    "better-sqlite3": "^12.9.0"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "npx prebuild-install --runtime electron --target 32.3.3 --arch x64 --platform win32 --module-dir node_modules/better-sqlite3 || true",
+    "dist:win": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg",
+    "dist:dir": "electron-builder --dir",
+    "gen:icon": "node scripts/gen-placeholder-icon.mjs",
+    "gen:icns": "node scripts/gen-placeholder-icns.mjs"
+  },
+  "build": {
+    "appId": "app.pace.desktop",
+    "productName": "Pace",
+    "copyright": "Copyright (c) 2026 Pace contributors",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "panel.html",
+      "panel.js",
+      "preview.html",
+      "preview.js",
+      "*.cjs",
+      "skills-defaults/**/*",
+      "package.json",
+      "node_modules/better-sqlite3/**/*",
+      "!node_modules/better-sqlite3/{benchmark,docs}/**/*",
+      "!**/{.DS_Store,Thumbs.db}",
+      "!**/*.{md,markdown,log}",
+      "!**/{test,tests,__tests__}/**/*",
+      "!_reference-from-cairn/**/*"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pace",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "dmg": {
+      "title": "Pace ${version}"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ]
+  }
+}
