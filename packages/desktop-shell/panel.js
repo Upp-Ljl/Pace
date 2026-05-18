@@ -784,15 +784,149 @@ inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
-// Wire ask-suggestion buttons
-document.querySelectorAll('.sg-item').forEach((sg) => {
-  sg.addEventListener('click', () => {
-    const p = sg.dataset.prompt;
-    if (!p) return;
-    inputEl.value = p;
-    send();
+// --- Ask tab: dynamic context strip + suggestions ---
+
+function renderAskContext(snap) {
+  const el = document.getElementById('ask-context-text');
+  if (!el) return;
+  const ctx = snap.ctx;
+  const parts = [];
+  if (ctx.git && ctx.git.available) {
+    const root = (ctx.git.git_root || '').split(/[\\/]/).pop();
+    parts.push(`<strong>${root}</strong>`);
+    parts.push(ctx.git.git_branch || '—');
+    if (ctx.git.dirty_count) parts.push(`<span class="name">${ctx.git.dirty_count}</span> 改动`);
+    if (typeof ctx.git.ahead === 'number' && ctx.git.ahead > 0) parts.push(`领先 <span class="name">${ctx.git.ahead}</span>`);
+  } else {
+    parts.push('当前目录不是 git 仓库');
+  }
+  if (snap.team && snap.team.length) parts.push(`团队 <span class="name">${snap.team.length}</span> 人`);
+  if (snap.recent_history && snap.recent_history.length) parts.push(`已聊 <span class="name">${snap.recent_history.length}</span> 次`);
+  el.innerHTML = '我这边看到的：' + parts.join(' · ');
+}
+
+function generateAskSuggestions(snap) {
+  const ctx = snap.ctx;
+  const team = snap.team || [];
+  const sugs = [];
+
+  // Always available — anchor of "PMP 角度问"
+  sugs.push({
+    label: '我现在做的事处于哪个阶段？',
+    tag: 'PMP 阶段',
+    prompt: '我现在做的事处于项目的哪个阶段（5 大过程组的哪个）？下一步合理应该做什么？',
   });
-});
+
+  // Git-aware
+  if (ctx.git && ctx.git.available) {
+    const dirty = ctx.git.dirty_count || 0;
+    if (dirty >= 3) {
+      sugs.push({
+        label: `${dirty} 个文件没 commit · 一起提还是分开？`,
+        tag: '范围',
+        prompt: `我有 ${dirty} 个文件改动还没 commit. 这些改动该一起提交，还是按主题分开几个 commit？从范围管理角度怎么看？`,
+      });
+    }
+    if (ctx.git.git_branch === 'main' || ctx.git.git_branch === 'master') {
+      sugs.push({
+        label: `在 ${ctx.git.git_branch} 直接改 · 风险大吗？`,
+        tag: '风险',
+        prompt: `我直接在 ${ctx.git.git_branch} 分支上做改动，没切 feature 分支。这个工作流的潜在风险是什么？什么场景下值得切？`,
+      });
+    }
+    if (typeof ctx.git.ahead === 'number' && ctx.git.ahead >= 3) {
+      sugs.push({
+        label: `${ctx.git.ahead} 个 commit 没 push · 要紧吗？`,
+        tag: '协作',
+        prompt: `我本地有 ${ctx.git.ahead} 个 commit 没 push 到 origin。从协作 / 风险角度，这个状态有什么风险？`,
+      });
+    }
+    // Recent commit theme — invite reflection
+    const recent = (ctx.git.commits || []).slice(0, 5);
+    if (recent.length >= 3) {
+      const lastSubject = recent[0].subject || '';
+      sugs.push({
+        label: `刚才那个 commit · 是个合理动作吗？`,
+        tag: '复盘',
+        prompt: `最新的 commit 是 \`${recent[0].hash} ${lastSubject}\`。从 PMP 视角看，这个动作处在哪个阶段？是否合理？有没有下一步该做的？`,
+      });
+    }
+  }
+
+  // Team-aware
+  if (team.length > 0) {
+    // Top 2-3 team members → personalized communication prompts
+    const top = team.slice(0, 2);
+    for (const m of top) {
+      const roleStr = m.role ? `（${m.role}）` : '';
+      sugs.push({
+        label: `怎么跟 ${m.name}${roleStr} 对齐这事？`,
+        tag: '沟通',
+        prompt: `我想跟 ${m.name}${roleStr}${(m.raci && m.raci.length) ? ' · RACI ' + m.raci.join('') : ''} 对齐我当前在做的改动。帮我用前-中-后框架写一段话术。`,
+      });
+    }
+  } else if (ctx.git && ctx.git.available) {
+    sugs.push({
+      label: '我团队里有哪些角色该 loop 进来？',
+      tag: '干系人',
+      prompt: '基于我当前的工作内容，从 PMP 干系人管理角度，可能需要 loop 进来的典型角色有哪些？我还没在 Pace 里登记同事，先帮我列下典型的。',
+    });
+  }
+
+  // Universal closers
+  sugs.push({
+    label: '这事有什么风险我没想到？',
+    tag: '风险',
+    prompt: '我现在做的这事，有哪些潜在风险或我可能漏掉的事？从 PMP 风险管理角度淡淡说一下。',
+  });
+
+  sugs.push({
+    label: '到现在为止节奏合不合理？',
+    tag: '复盘',
+    prompt: '基于我的 git 历史 + 团队 + cc 活动，到目前为止我的工作节奏合不合理？有什么值得调整的？',
+  });
+
+  // De-dupe by label + cap
+  const seen = new Set();
+  const out = [];
+  for (const s of sugs) {
+    if (seen.has(s.label)) continue;
+    seen.add(s.label);
+    out.push(s);
+    if (out.length >= 7) break;
+  }
+  return out;
+}
+
+function renderAskSuggestions(snap) {
+  const listEl = document.getElementById('ask-suggestions-list');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  const sugs = generateAskSuggestions(snap);
+  for (const s of sugs) {
+    const btn = document.createElement('button');
+    btn.className = 'sg-item';
+    btn.dataset.prompt = s.prompt;
+
+    const labelEl = document.createElement('span');
+    labelEl.textContent = s.label;
+    btn.appendChild(labelEl);
+
+    if (s.tag) {
+      const tagEl = document.createElement('span');
+      tagEl.className = 'sg-tag';
+      tagEl.textContent = s.tag;
+      btn.appendChild(tagEl);
+    }
+
+    btn.addEventListener('click', () => {
+      switchTab('ask');
+      inputEl.value = s.prompt;
+      send();
+    });
+    listEl.appendChild(btn);
+  }
+}
 
 // --- Settings modal ---
 async function loadSettings() {
@@ -868,6 +1002,8 @@ async function refreshAll() {
   headerMetaEl.textContent = buildMetaLine(snap.ctx, snap.settings);
   renderNowFeed(snap);
   renderTeam(snap.team || []);
+  renderAskContext(snap);
+  renderAskSuggestions(snap);
 }
 
 // --- Team rendering ---
