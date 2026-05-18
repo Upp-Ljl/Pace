@@ -1,16 +1,12 @@
 'use strict';
 
 /**
- * Pace desktop-shell — Electron main process (v0.1 minimal).
+ * Pace desktop-shell — Electron main process (v0.1).
  *
  * Responsibilities:
  *   - app lifecycle (whenReady / window-all-closed / activate)
  *   - single BrowserWindow loading panel.html
- *   - IPC: pace:mentor-ask (stubbed → mentor-handler in later phase)
- *
- * v0.1 scope: chat round-trip only. No DB, no cc-bridge, no LLM call —
- * mentor-handler returns a stubbed markdown reply. Wiring real cc-bridge
- * + LLM + PMP skills is the next phase.
+ *   - IPC routing: mentor pipeline, settings, history, log
  *
  * Per PRODUCT.md decision #4 (passive responses only): no tray nudges,
  * no global shortcut popup, no notifications. Single foreground window.
@@ -18,13 +14,19 @@
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+const config = require('./config.cjs');
+const db = require('./db.cjs');
+const mentorPipeline = require('./mentor-pipeline.cjs');
 
 let mainWindow = null;
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 700,
+    width: 820,
+    height: 720,
     minWidth: 480,
     minHeight: 480,
     title: 'Pace',
@@ -45,7 +47,7 @@ function createMainWindow() {
   });
 }
 
-// --- IPC ---
+// --- IPC: mentor ---
 
 ipcMain.handle('pace:mentor-ask', async (_event, input) => {
   const text = (input && typeof input.text === 'string') ? input.text.trim() : '';
@@ -55,30 +57,40 @@ ipcMain.handle('pace:mentor-ask', async (_event, input) => {
       debug: { stage: 'reject', reason: 'empty_input' },
     };
   }
-  // v0.1 stub. Real implementation will:
-  //   1. cc-bridge.cjs → lazy read transcript + git context
-  //   2. project-queries.cjs → project ID resolution
-  //   3. mentor-collect → activity classification (haiku)
-  //   4. mentor-prompt + llm-client → PMP-routed sonnet call
-  //   5. cairn-kernel MCP → persist as task
-  return {
-    markdown: [
-      '> _v0.1 stub reply — 真实的 PMP mentor 推断引擎尚未接入。_',
-      '',
-      `你刚才说：**${text.slice(0, 200)}${text.length > 200 ? '…' : ''}**`,
-      '',
-      '下一步：接入 cc-bridge 读 transcript + git 上下文 → mentor 推断引擎跑 PMP 阶段分类。',
-    ].join('\n'),
-    debug: {
-      stage: 'stub',
-      received_at: new Date().toISOString(),
-      input_length: text.length,
-    },
-  };
+  const cwd = (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
+  try {
+    return await mentorPipeline.runMentorTurn(text, { cwd });
+  } catch (err) {
+    return {
+      markdown: `⚠️ **mentor pipeline 异常**\n\n\`${err.message}\``,
+      debug: { stage: 'pipeline_error', error: err.message, stack: err.stack },
+    };
+  }
 });
 
+// --- IPC: settings ---
+
+ipcMain.handle('pace:settings-get', async () => {
+  return config.getSettings();
+});
+
+ipcMain.handle('pace:settings-save', async (_event, patch) => {
+  return config.saveSettings(patch || {});
+});
+
+// --- IPC: history ---
+
+ipcMain.handle('pace:history-list', async (_event, limit) => {
+  try {
+    return db.listMentorTurns(limit || 30);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// --- IPC: log ---
+
 ipcMain.on('pace:log', (_event, component, event, details, level) => {
-  // v0.1: stdout only. Later: ~/.pace/logs/pace-<date>.jsonl
   const line = JSON.stringify({
     ts: new Date().toISOString(),
     level: level || 'info',
@@ -86,12 +98,28 @@ ipcMain.on('pace:log', (_event, component, event, details, level) => {
     event: event || 'log',
     details: details || null,
   });
+  // stdout (caught by parent if launched via npm). Future: ~/.pace/logs/.
   process.stdout.write(line + '\n');
+  // Best-effort file log for the user to grep, never block.
+  try {
+    const logDir = path.join(os.homedir(), '.pace', 'logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    const stamp = new Date().toISOString().slice(0, 10);
+    fs.appendFileSync(path.join(logDir, `pace-${stamp}.jsonl`), line + '\n');
+  } catch (_e) { /* swallow */ }
 });
 
 // --- Lifecycle ---
 
 app.whenReady().then(() => {
+  // Eagerly open DB so renderer can call settings/history without
+  // first-call latency surprises. Failure here is logged but not fatal —
+  // the mentor pipeline best-effort-persists.
+  try {
+    db.openDatabase();
+  } catch (err) {
+    process.stderr.write(`[pace] db open failed: ${err.message}\n`);
+  }
   createMainWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
