@@ -22,7 +22,7 @@ const CONFIG_PATH = path.join(os.homedir(), '.pace', 'config.json');
 
 const DEFAULTS = Object.freeze({
   minimax_base_url: 'https://api.minimaxi.com/v1',
-  minimax_model:    'MiniMax-M2.7',
+  minimax_model:    'MiniMax-M2.7-highspeed',
   knowledge_source: 'pmp',
   install_cc_hook:  false,
 });
