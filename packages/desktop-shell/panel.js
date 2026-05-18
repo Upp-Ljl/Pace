@@ -15,8 +15,9 @@ const modalEl = document.getElementById('modal');
 const openSettingsBtn = document.getElementById('open-settings');
 const closeSettingsBtn = document.getElementById('close-settings');
 const saveSettingsBtn = document.getElementById('save-settings');
-const apiKeyInput = document.getElementById('api-key');
-const llmModelSelect = document.getElementById('llm-model');
+const minimaxBaseUrlInput = document.getElementById('minimax-base-url');
+const minimaxApiKeyInput  = document.getElementById('minimax-api-key');
+const minimaxModelInput   = document.getElementById('minimax-model');
 const knowledgeSourceSelect = document.getElementById('knowledge-source');
 const settingsStatusEl = document.getElementById('settings-status');
 const statusPillEl = document.getElementById('status-pill');
@@ -162,17 +163,19 @@ inputEl.addEventListener('keydown', (e) => {
 async function loadSettings() {
   try {
     const s = await window.pace.getSettings();
-    llmModelSelect.value = s.llm_model || 'claude-sonnet-4-6';
+    minimaxBaseUrlInput.value = s.minimax_base_url || '';
+    minimaxModelInput.value   = s.minimax_model   || '';
+    minimaxApiKeyInput.value  = ''; // never reveal stored key
     knowledgeSourceSelect.value = s.knowledge_source || 'pmp';
-    apiKeyInput.value = ''; // never reveal stored key
-    if (s.has_api_key) {
+    if (s.has_minimax_config) {
+      const keySrc = s.minimax_api_key_source === 'env' ? '环境变量' : 'config.json';
       settingsStatusEl.className = 'status-row ok';
-      settingsStatusEl.textContent = `✓ API key 已配置（来源：${s.api_key_source === 'env' ? '环境变量' : 'config.json'}）。粘贴新 key 可覆盖；留空保存则保留现状。`;
+      settingsStatusEl.textContent = `✓ MiniMax 已配置 · key 来源：${keySrc} · model: ${s.minimax_model}。粘贴新 key 可覆盖；留空保存保留现状。`;
     } else {
       settingsStatusEl.className = 'status-row warn';
-      settingsStatusEl.textContent = '⚠ 还没设置 API key — 配上后 mentor 才能回答。';
+      settingsStatusEl.textContent = '⚠ 还没设置 MiniMax API key — 配上后 mentor 才能回答。';
     }
-    statusPillEl.textContent = s.has_api_key ? 'v0.1 · key OK' : 'v0.1 · 未配 key';
+    statusPillEl.textContent = s.has_minimax_config ? 'v0.1 · MiniMax OK' : 'v0.1 · 未配 key';
   } catch (err) {
     settingsStatusEl.className = 'status-row warn';
     settingsStatusEl.textContent = `加载设置出错：${err.message}`;
@@ -200,21 +203,22 @@ saveSettingsBtn.addEventListener('click', async () => {
   saveSettingsBtn.disabled = true;
   try {
     const patch = {
-      llm_model: llmModelSelect.value,
+      minimax_base_url: minimaxBaseUrlInput.value,
+      minimax_model:    minimaxModelInput.value,
       knowledge_source: knowledgeSourceSelect.value,
     };
-    const newKey = apiKeyInput.value.trim();
-    if (newKey) patch.anthropic_api_key = newKey;
+    const newKey = minimaxApiKeyInput.value.trim();
+    if (newKey) patch.minimax_api_key = newKey;
     const s = await window.pace.saveSettings(patch);
-    if (s && s.has_api_key) {
+    if (s && s.has_minimax_config) {
       settingsStatusEl.className = 'status-row ok';
       settingsStatusEl.textContent = `✓ 已保存到 ${s.config_path}`;
-      statusPillEl.textContent = 'v0.1 · key OK';
+      statusPillEl.textContent = 'v0.1 · MiniMax OK';
     } else {
       settingsStatusEl.className = 'status-row warn';
-      settingsStatusEl.textContent = '⚠ 保存了但仍无 API key — mentor 无法回答。';
+      settingsStatusEl.textContent = '⚠ 保存了但仍缺 API key — mentor 无法回答。';
     }
-    apiKeyInput.value = '';
+    minimaxApiKeyInput.value = '';
   } catch (err) {
     settingsStatusEl.className = 'status-row warn';
     settingsStatusEl.textContent = `保存出错：${err.message}`;
@@ -230,11 +234,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   // First-launch hint: if no API key, suggest opening settings.
   try {
     const s = await window.pace.getSettings();
-    statusPillEl.textContent = s.has_api_key ? 'v0.1 · key OK' : 'v0.1 · 未配 key';
-    if (!s.has_api_key) {
+    statusPillEl.textContent = s.has_minimax_config ? 'v0.1 · MiniMax OK' : 'v0.1 · 未配 key';
+    if (!s.has_minimax_config) {
       const hint = document.createElement('div');
       hint.className = 'msg system';
-      hint.textContent = '提示：还没配 LLM key。点右上角 ⚙ 设置一下，然后就能开始问。';
+      hint.textContent = '提示：还没配 MiniMax key。点右上角 ⚙ 粘贴 Base URL / API key / model，然后就能开始问。';
       chatEl.appendChild(hint);
     }
   } catch (_e) {}

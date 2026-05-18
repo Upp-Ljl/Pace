@@ -176,6 +176,7 @@ async function chatJson(payload, opts) {
     temperature: payload.temperature != null ? payload.temperature : 0.2,
   };
   if (payload.response_format) body.response_format = payload.response_format;
+  if (Number.isFinite(payload.max_tokens)) body.max_tokens = payload.max_tokens;
 
   try {
     const resp = await fetchImpl(url, {

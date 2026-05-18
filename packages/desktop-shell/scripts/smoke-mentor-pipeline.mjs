@@ -32,9 +32,9 @@ const require = createRequire(import.meta.url);
 const pipeline = require(path.join(__dirname, '..', 'mentor-pipeline.cjs'));
 
 const projectRoot = path.resolve(__dirname, '..', '..', '..');
-const hasKey = !!(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim());
+const hasKey = !!(process.env.MINIMAX_API_KEY && process.env.MINIMAX_API_KEY.trim());
 
-console.log(`==> smoke-mentor-pipeline: cwd=${projectRoot}, key_in_env=${hasKey}`);
+console.log(`==> smoke-mentor-pipeline: cwd=${projectRoot}, MINIMAX_API_KEY_in_env=${hasKey}`);
 
 const t0 = Date.now();
 const reply = await pipeline.runMentorTurn('我现在在干啥？', { cwd: projectRoot });
@@ -57,7 +57,7 @@ if (!reply.debug || typeof reply.debug.stage !== 'string') {
   failures.push('reply.debug.stage missing');
   pass = false;
 }
-const expected = hasKey ? ['ok', 'llm_error'] : ['no_api_key'];
+const expected = hasKey ? ['ok', 'llm_error'] : ['no_provider'];
 if (!expected.includes(reply.debug && reply.debug.stage)) {
   failures.push(`debug.stage="${reply.debug.stage}" not in expected ${JSON.stringify(expected)}`);
   pass = false;
