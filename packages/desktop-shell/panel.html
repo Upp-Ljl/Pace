@@ -185,16 +185,14 @@ body {
 #view-now { padding: 0; }
 #cards-section { padding: 12px 14px 14px; }
 
-/* Pinned commit history */
+/* Commit pane (scrolls with the rest of Now feed; NOT sticky) */
 .commit-pane {
-  padding: 10px 14px 12px;
-  background: rgba(18, 22, 25, 0.55);
-  border-bottom: 1px solid var(--border);
+  padding: 12px 14px 10px;
+  margin: 12px 14px 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   flex: 0 0 auto;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  backdrop-filter: blur(4px);
 }
 .commit-pane-head {
   display: flex; align-items: baseline; gap: 8px;
@@ -214,6 +212,42 @@ body {
   color: var(--text-muted);
   margin-left: auto;
 }
+.commit-toggle {
+  -webkit-app-region: no-drag;
+  background: none; border: none;
+  color: var(--text-muted);
+  font-family: var(--font); font-size: 10px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: color var(--dur-micro);
+  letter-spacing: 0.04em;
+}
+.commit-toggle:hover { color: var(--accent); }
+
+/* Digest line — PMP-flavored one-liner */
+.commit-digest {
+  font-family: var(--font-prose);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  background: rgba(13, 15, 16, 0.4);
+  border-left: 2px solid var(--accent-muted);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.commit-digest strong { color: var(--accent); font-weight: 600; }
+.commit-digest em { color: var(--text-muted); font-style: normal; font-size: 11px; }
+.commit-digest .pmp-mood {
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  display: block;
+  margin-top: 3px;
+}
+
 .commit-list {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column;
@@ -222,7 +256,7 @@ body {
 .commit-row {
   display: flex; align-items: center;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 5px 8px;
   border-radius: var(--radius-sm);
   font-size: 11.5px;
   color: var(--text-secondary);
@@ -237,7 +271,7 @@ body {
   font-family: var(--font);
   font-size: 10.5px;
   color: var(--accent);
-  flex: 0 0 56px;
+  flex: 0 0 54px;
 }
 .commit-time {
   font-family: var(--font);
@@ -251,6 +285,23 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.commit-tag {
+  font-family: var(--font);
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(120, 130, 140, 0.10);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(80, 90, 100, 0.30);
+  flex: 0 0 auto;
+}
+.commit-tag.pg-Exec    { color: var(--accent); border-color: var(--accent-muted); background: var(--accent-bg); }
+.commit-tag.pg-Plan    { color: var(--warn);   border-color: rgba(212, 168, 90, 0.55); background: rgba(212, 168, 90, 0.10); }
+.commit-tag.pg-Monitor { color: #b09f7b; border-color: rgba(176, 159, 123, 0.55); background: rgba(176, 159, 123, 0.10); }
+.commit-tag.pg-Init,
+.commit-tag.pg-Closing { color: var(--text-secondary); }
+
 .commit-empty {
   font-style: italic;
   color: var(--text-muted);
@@ -787,12 +838,14 @@ body {
 
   <!-- VIEW: NOW -->
   <div class="view" id="view-now">
-    <!-- PINNED: commit history -->
+    <!-- Commit pane (non-sticky, collapsible 3↔10 with PMP digest) -->
     <section id="commit-pane" class="commit-pane">
       <div class="commit-pane-head">
         <span class="commit-pane-title">最近提交</span>
         <span class="commit-pane-meta" id="commit-pane-meta">—</span>
+        <button class="commit-toggle" id="commit-toggle" type="button">展开 ▾</button>
       </div>
+      <div class="commit-digest" id="commit-digest"></div>
       <ul class="commit-list" id="commit-list">
         <li class="commit-empty">读取中…</li>
       </ul>

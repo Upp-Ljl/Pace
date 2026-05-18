@@ -22,6 +22,8 @@ const nowView      = document.getElementById('view-now');
 const cardsSection = document.getElementById('cards-section');
 const commitListEl = document.getElementById('commit-list');
 const commitPaneMetaEl = document.getElementById('commit-pane-meta');
+const commitDigestEl = document.getElementById('commit-digest');
+const commitToggleBtn = document.getElementById('commit-toggle');
 const teamView     = document.getElementById('view-team');
 const askView      = document.getElementById('view-ask');
 const askHistoryEl = document.getElementById('ask-history');
@@ -373,24 +375,110 @@ function generateCards(snapshot) {
     .sort((a, b) => (a.priority || 99) - (b.priority || 99));
 }
 
-// --- Render commit pane (pinned at top of Now tab) ---
+// --- Commit pane (collapsible, PMP-flavored digest + tags) ---
+
+const PMP_TAGS = {
+  feat:     { pg: 'Exec',    pgZh: '执行', ka: 'Scope',       kaZh: '范围',   label: '加新功能' },
+  add:      { pg: 'Exec',    pgZh: '执行', ka: 'Scope',       kaZh: '范围',   label: '增量' },
+  fix:      { pg: 'Exec',    pgZh: '执行', ka: 'Quality',     kaZh: '质量',   label: '修缺陷' },
+  bugfix:   { pg: 'Exec',    pgZh: '执行', ka: 'Quality',     kaZh: '质量',   label: '修缺陷' },
+  hotfix:   { pg: 'Exec',    pgZh: '执行', ka: 'Risk',        kaZh: '风险',   label: '紧急修复' },
+  refactor: { pg: 'Exec',    pgZh: '执行', ka: 'Integration', kaZh: '整合',   label: '重构' },
+  cleanup:  { pg: 'Exec',    pgZh: '执行', ka: 'Integration', kaZh: '整合',   label: '清理' },
+  chore:    { pg: 'Exec',    pgZh: '执行', ka: 'Integration', kaZh: '整合',   label: '日常' },
+  docs:     { pg: 'Exec',    pgZh: '执行', ka: 'Comms',       kaZh: '沟通',   label: '文档' },
+  test:     { pg: 'Monitor', pgZh: '监控', ka: 'Quality',     kaZh: '质量',   label: '测试' },
+  ui:       { pg: 'Exec',    pgZh: '执行', ka: 'Scope',       kaZh: '范围',   label: 'UI 迭代' },
+  config:   { pg: 'Plan',    pgZh: '规划', ka: 'Integration', kaZh: '整合',   label: '配置' },
+  pivot:    { pg: 'Plan',    pgZh: '规划', ka: 'Integration', kaZh: '整合',   label: '转向' },
+  wire:     { pg: 'Exec',    pgZh: '执行', ka: 'Integration', kaZh: '整合',   label: '集成' },
+  import:   { pg: 'Plan',    pgZh: '规划', ka: 'Integration', kaZh: '整合',   label: '引入' },
+  perf:     { pg: 'Monitor', pgZh: '监控', ka: 'Quality',     kaZh: '质量',   label: '性能' },
+  style:    { pg: 'Exec',    pgZh: '执行', ka: 'Quality',     kaZh: '质量',   label: '风格' },
+  release:  { pg: 'Closing', pgZh: '收尾', ka: 'Integration', kaZh: '整合',   label: '发布' },
+  init:     { pg: 'Init',    pgZh: '启动', ka: 'Integration', kaZh: '整合',   label: '初始化' },
+  build:    { pg: 'Exec',    pgZh: '执行', ka: 'Integration', kaZh: '整合',   label: '构建' },
+  deploy:   { pg: 'Closing', pgZh: '收尾', ka: 'Integration', kaZh: '整合',   label: '部署' },
+};
+
+function tagCommit(subject) {
+  if (!subject) return null;
+  const m = /^([a-z]+)[:\s(]/i.exec(subject);
+  if (m) {
+    const tag = PMP_TAGS[m[1].toLowerCase()];
+    if (tag) return tag;
+  }
+  return null;
+}
+
+function buildCommitDigest(commits) {
+  if (!commits || commits.length === 0) return null;
+  const visible = commits.slice(0, 8);
+  const pgCount = {};
+  const kaCount = {};
+  const pgZhMap = {};
+  const kaZhMap = {};
+  let totalTagged = 0;
+  for (const c of visible) {
+    const t = tagCommit(c.subject);
+    if (!t) continue;
+    totalTagged++;
+    pgCount[t.pg] = (pgCount[t.pg] || 0) + 1;
+    kaCount[t.ka] = (kaCount[t.ka] || 0) + 1;
+    pgZhMap[t.pg] = t.pgZh;
+    kaZhMap[t.ka] = t.kaZh;
+  }
+  if (totalTagged === 0) return null;
+  const dominantPg = Object.keys(pgCount).sort((a, b) => pgCount[b] - pgCount[a])[0];
+  const dominantKa = Object.keys(kaCount).sort((a, b) => kaCount[b] - kaCount[a])[0];
+
+  // Compute span (oldest tracked vs newest)
+  const tsOldest = visible[visible.length - 1].ts;
+  const tsNewest = visible[0].ts;
+  const spanMs = tsOldest && tsNewest ? (tsNewest - tsOldest) : 0;
+  const spanLabel = spanMs > 0 ? humanizeSpan(spanMs) : '';
+
+  const moodLines = [];
+  // PMP mood
+  const distinct = Object.keys(pgCount).length;
+  if (distinct === 1) {
+    moodLines.push(`节奏专注：${pgCount[dominantPg]}/${visible.length} 都在 ${pgZhMap[dominantPg]} 阶段。`);
+  } else if (distinct >= 3) {
+    moodLines.push(`多线并进：${Object.entries(pgCount).map(([k,v]) => `${pgZhMap[k]}×${v}`).join(' / ')}——注意 scope 是否在收口。`);
+  }
+
+  return {
+    primary: `最近 ${visible.length} 个 commit 多落在 <strong>${pgZhMap[dominantPg]}</strong> × <strong>${kaZhMap[dominantKa] || '-'}</strong>${spanLabel ? ' <em>· 跨度 ' + spanLabel + '</em>' : ''}`,
+    mood: moodLines.join(' '),
+  };
+}
+
+function humanizeSpan(ms) {
+  if (ms < 3600_000) return Math.round(ms / 60_000) + ' 分钟';
+  if (ms < 86400_000) return (ms / 3600_000).toFixed(1) + ' 小时';
+  return Math.round(ms / 86400_000) + ' 天';
+}
 
 let lastSeenCommitHash = null;
+let commitPaneExpanded = false;
+const COLLAPSED_COUNT = 3;
+const EXPANDED_COUNT = 10;
 
 function renderCommitPane(ctx) {
   const commits = (ctx.git && ctx.git.commits) || [];
   commitListEl.innerHTML = '';
+  commitDigestEl.innerHTML = '';
 
-  // Meta line: total + ahead/behind
+  // Meta line: ahead/behind + dirty
   const metaParts = [];
   if (ctx.git && ctx.git.available) {
     if (typeof ctx.git.ahead === 'number') {
       if (ctx.git.ahead > 0) metaParts.push(`领先 ${ctx.git.ahead}`);
       if (ctx.git.behind > 0) metaParts.push(`落后 ${ctx.git.behind}`);
-      if (ctx.git.ahead === 0 && ctx.git.behind === 0) metaParts.push('与 origin 同步');
+      if (ctx.git.ahead === 0 && ctx.git.behind === 0) metaParts.push('已同步');
     }
     if (typeof ctx.git.dirty_count === 'number' && ctx.git.dirty_count > 0) {
-      metaParts.push(`${ctx.git.dirty_count} 改动未提交`);
+      metaParts.push(`${ctx.git.dirty_count} 未提交`);
     }
   }
   commitPaneMetaEl.textContent = metaParts.length ? metaParts.join(' · ') : '';
@@ -400,16 +488,35 @@ function renderCommitPane(ctx) {
     empty.className = 'commit-empty';
     empty.textContent = ctx.git && ctx.git.available ? '没有 commit 历史' : '当前目录不是 git 仓库';
     commitListEl.appendChild(empty);
+    commitToggleBtn.hidden = true;
     return;
   }
 
-  // Detect new commits (top hash changed) — flash animation
-  const newest = commits[0] && commits[0].hash;
-  const isFresh = (lastSeenCommitHash && newest && lastSeenCommitHash !== newest);
-  if (newest) lastSeenCommitHash = newest;
+  // Digest
+  const digest = buildCommitDigest(commits);
+  if (digest) {
+    const p = document.createElement('span');
+    p.innerHTML = digest.primary;
+    commitDigestEl.appendChild(p);
+    if (digest.mood) {
+      const m = document.createElement('span');
+      m.className = 'pmp-mood';
+      m.textContent = digest.mood;
+      commitDigestEl.appendChild(m);
+    }
+  }
 
-  // Show up to 6 most-recent
-  commits.slice(0, 6).forEach((c, i) => {
+  // Detect new commit → flash
+  const newest = commits[0].hash;
+  const isFresh = (lastSeenCommitHash && newest !== lastSeenCommitHash);
+  lastSeenCommitHash = newest;
+
+  // Show N based on collapse state
+  const maxShow = commitPaneExpanded ? EXPANDED_COUNT : COLLAPSED_COUNT;
+  const toShow = commits.slice(0, maxShow);
+
+  for (let i = 0; i < toShow.length; i++) {
+    const c = toShow[i];
     const li = document.createElement('li');
     li.className = 'commit-row' + (isFresh && i === 0 ? ' fresh' : '');
     li.title = `${c.hash} · ${c.subject}${c.author ? ' · ' + c.author : ''}`;
@@ -429,12 +536,37 @@ function renderCommitPane(ctx) {
     subjectEl.textContent = c.subject;
     li.appendChild(subjectEl);
 
-    // Click commit → mentor weighs in on what this commit means
-    li.addEventListener('click', () => askCommitMentor(c));
+    const tag = tagCommit(c.subject);
+    if (tag) {
+      const tagEl = document.createElement('span');
+      tagEl.className = 'commit-tag pg-' + tag.pg;
+      tagEl.textContent = tag.pgZh + '·' + tag.kaZh;
+      tagEl.title = `${tag.pg} × ${tag.ka} — ${tag.label}`;
+      li.appendChild(tagEl);
+    }
 
+    li.addEventListener('click', () => askCommitMentor(c));
     commitListEl.appendChild(li);
-  });
+  }
+
+  // Toggle button
+  if (commits.length > COLLAPSED_COUNT) {
+    commitToggleBtn.hidden = false;
+    if (commitPaneExpanded) {
+      commitToggleBtn.textContent = '收起 ▴';
+    } else {
+      commitToggleBtn.textContent = `+${Math.min(commits.length, EXPANDED_COUNT) - COLLAPSED_COUNT} 条 ▾`;
+    }
+  } else {
+    commitToggleBtn.hidden = true;
+  }
 }
+
+commitToggleBtn.addEventListener('click', () => {
+  commitPaneExpanded = !commitPaneExpanded;
+  // Re-render only the commit pane using last snapshot (or trigger refresh)
+  refreshAll();
+});
 
 async function askCommitMentor(commit) {
   // Switch to Ask tab, prefill, send
