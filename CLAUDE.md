@@ -37,10 +37,16 @@
 | 仓 | 角色 | Pace 怎么对待 |
 |---|---|---|
 | `D:\lll\pace` | 本仓库。Pace 产品壳：UI / mentor 推断逻辑 / cc 耦合层 | 主战场 |
-| `D:\lll\cairn` | kernel 中间件（8 state objects + 29 MCP + scratchpad + checkpoints + hooks turn protocol + panel infra） | **只 depend `cairn-kernel` 包，不动 Cairn 源码**。Cairn rebrand 成 kernel 是 Cairn 自己 session 的活 |
+| `D:\lll\cairn` | kernel 中间件（8 state objects + 29 MCP + scratchpad + checkpoints + hooks turn protocol + panel infra） | 见下方 §三条契约 |
 | `D:\lll\d2p` | 「0 号程序员」——给程序员自动 spawn cc 跑任务 | **完全隔离**，不抢用户 / 不抢框架 / 不共享代码 |
 
-改 Pace 代码前自检：会不会动到 cairn / d2p？会的话停下问用户。
+### Pace ↔ Cairn 三条契约（2026-05-18 锁）
+
+1. **不修改 `D:\lll\cairn` 仓库内任何文件**——Cairn 源码演进归 Cairn 自己 session 管。
+2. **可以一次性复制 cairn 资产到 pace 后在 Pace 内自由演化**（如 `packages/desktop-shell` 起手脚手架；详 `ARCHITECTURE.md` §1）。复制点后两份是独立副本，不 sync。
+3. **可以通过 npm / file-link 拉 cairn 发布的 `cairn-kernel` 包**（即 cairn 的 `mcp-server` 子包），通过 MCP stdio 调它的 29 工具。**绝不** import cairn `daemon` / `desktop-shell` 子包的**运行时源码**。
+
+改 Pace 代码前自检：会不会动 cairn 源码？会动 d2p？会的话停下问用户。
 
 ---
 
