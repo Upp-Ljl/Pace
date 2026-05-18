@@ -63,17 +63,37 @@ function applyMigrations() {
   `);
   const cur = db.prepare('SELECT version FROM schema_version WHERE id = 1').get();
   const current = cur ? cur.version : 0;
-  const target = 1;
+  const target = 2;
   if (current >= target) return;
 
   const tx = db.transaction(() => {
     if (current < 1) migrate_001_init();
+    if (current < 2) migrate_002_team_members();
     db.prepare(`
       INSERT OR REPLACE INTO schema_version (id, version, applied_at)
       VALUES (1, ?, ?)
     `).run(target, new Date().toISOString());
   });
   tx();
+}
+
+function migrate_002_team_members() {
+  // Per-project team directory. project_id = normalized git_root path
+  // (we don't have a separate projects table yet — keep schema flat).
+  db.exec(`
+    CREATE TABLE team_members (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id   TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      role         TEXT,                       -- PM / Designer / Eng / QA / PO / Mgr / Other
+      raci_json    TEXT,                       -- JSON array of any of [R, A, C, I]
+      notes        TEXT,
+      created_at   TEXT NOT NULL,
+      updated_at   TEXT NOT NULL
+    );
+    CREATE INDEX team_members_project_idx
+      ON team_members (project_id);
+  `);
 }
 
 function migrate_001_init() {
@@ -180,6 +200,64 @@ function getCachedProjectId(cwd) {
   return openDatabase().prepare('SELECT * FROM cached_project_ids WHERE cwd = ?').get(cwd) || null;
 }
 
+// --- team_members CRUD ---
+function listTeamMembers(projectId) {
+  if (!projectId) return [];
+  return openDatabase().prepare(`
+    SELECT id, project_id, name, role, raci_json, notes, created_at, updated_at
+    FROM team_members WHERE project_id = ? ORDER BY created_at ASC
+  `).all(projectId).map((row) => ({
+    ...row,
+    raci: row.raci_json ? safeParseJSON(row.raci_json) : [],
+  }));
+}
+
+function addTeamMember(input) {
+  const now = new Date().toISOString();
+  const raciJson = JSON.stringify(Array.isArray(input.raci) ? input.raci : []);
+  const result = openDatabase().prepare(`
+    INSERT INTO team_members (project_id, name, role, raci_json, notes, created_at, updated_at)
+    VALUES (@project_id, @name, @role, @raci_json, @notes, @created_at, @updated_at)
+  `).run({
+    project_id: input.project_id,
+    name: String(input.name || '').trim(),
+    role: input.role ? String(input.role).trim() : null,
+    raci_json: raciJson,
+    notes: input.notes ? String(input.notes).trim() : null,
+    created_at: now,
+    updated_at: now,
+  });
+  return result.lastInsertRowid;
+}
+
+function updateTeamMember(id, patch) {
+  const cur = openDatabase().prepare('SELECT * FROM team_members WHERE id = ?').get(id);
+  if (!cur) return false;
+  const next = {
+    name:  patch.name  !== undefined ? String(patch.name).trim()  : cur.name,
+    role:  patch.role  !== undefined ? (patch.role ? String(patch.role).trim() : null) : cur.role,
+    raci_json: patch.raci !== undefined ? JSON.stringify(patch.raci) : cur.raci_json,
+    notes: patch.notes !== undefined ? (patch.notes ? String(patch.notes).trim() : null) : cur.notes,
+    updated_at: new Date().toISOString(),
+    id,
+  };
+  openDatabase().prepare(`
+    UPDATE team_members
+    SET name = @name, role = @role, raci_json = @raci_json, notes = @notes, updated_at = @updated_at
+    WHERE id = @id
+  `).run(next);
+  return true;
+}
+
+function deleteTeamMember(id) {
+  const result = openDatabase().prepare('DELETE FROM team_members WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+function safeParseJSON(s) {
+  try { return JSON.parse(s); } catch (_e) { return []; }
+}
+
 module.exports = {
   openDatabase,
   getDbPath: () => dbPath || DEFAULT_DB_PATH,
@@ -192,4 +270,9 @@ module.exports = {
   // project cache
   cacheProjectId,
   getCachedProjectId,
+  // team
+  listTeamMembers,
+  addTeamMember,
+  updateTeamMember,
+  deleteTeamMember,
 };

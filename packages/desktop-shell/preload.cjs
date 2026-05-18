@@ -19,6 +19,18 @@ const api = {
   hideWindow:       ()       => ipcRenderer.invoke('pace:window-hide'),
   togglePin:        ()       => ipcRenderer.invoke('pace:window-pin-toggle'),
   windowState:      ()       => ipcRenderer.invoke('pace:window-state'),
+  // Team
+  teamList:    ()             => ipcRenderer.invoke('pace:team-list', {}),
+  teamAdd:     (member)       => ipcRenderer.invoke('pace:team-add', member || {}),
+  teamUpdate:  (id, patch)    => ipcRenderer.invoke('pace:team-update', { id, patch }),
+  teamDelete:  (id)           => ipcRenderer.invoke('pace:team-delete', { id }),
+  // Git watcher
+  startGitWatch: () => ipcRenderer.invoke('pace:git-watch', {}),
+  onGitChange:   (cb) => {
+    const handler = (_event, payload) => { try { cb(payload); } catch (_e) {} };
+    ipcRenderer.on('pace:git-change', handler);
+    return () => ipcRenderer.removeListener('pace:git-change', handler);
+  },
   log: (component, event, details, level) => {
     try { ipcRenderer.send('pace:log', component, event, details, level); } catch (_e) {}
   },

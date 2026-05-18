@@ -316,10 +316,141 @@ body {
 }
 
 /* ============================================================
-   TEAM tab — placeholder for v0.1
+   TEAM tab
    ============================================================ */
-#view-team { padding: 14px; }
+#view-team { padding: 0; }
 #view-identities { padding: 14px; }
+
+#team-toolbar {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  background: rgba(15, 18, 20, 0.4);
+}
+.team-toolbar-count {
+  font-family: var(--font);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex: 1 1 auto;
+}
+.team-add-btn {
+  -webkit-app-region: no-drag;
+  padding: 5px 12px;
+  border: 1px solid var(--accent-muted);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-family: var(--font); font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all var(--dur-micro);
+}
+.team-add-btn:hover { background: var(--accent); color: var(--on-accent); }
+
+#team-list {
+  padding: 10px 14px 14px;
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
+.team-member {
+  display: flex; align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: background var(--dur-short);
+}
+.team-member:hover { background: rgba(28, 34, 38, 0.65); }
+
+.tm-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
+  text-transform: uppercase;
+}
+.tm-body { flex: 1 1 auto; min-width: 0; }
+.tm-line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tm-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.tm-role {
+  font-family: var(--font); font-size: 10px;
+  color: var(--text-muted);
+  padding: 1px 6px;
+  background: rgba(120, 130, 140, 0.12);
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+.tm-raci { display: flex; gap: 3px; }
+.tm-raci-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  font-family: var(--font); font-size: 9px;
+  font-weight: 700;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-muted);
+}
+.tm-raci-badge.R { background: rgba(232, 85, 69, 0.10); color: var(--alert); border-color: var(--alert); }
+.tm-raci-badge.A { background: rgba(212, 168, 90, 0.10); color: var(--warn);  border-color: var(--warn); }
+.tm-raci-badge.C { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-muted); }
+.tm-raci-badge.I { background: rgba(120, 130, 140, 0.10); color: var(--text-secondary); border-color: var(--border); }
+.tm-notes {
+  font-family: var(--font-prose);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.tm-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.tm-action-btn {
+  -webkit-app-region: no-drag;
+  background: none; border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color var(--dur-micro);
+}
+.tm-action-btn:hover { color: var(--text-secondary); }
+.tm-action-btn.danger:hover { color: var(--alert); }
+
+/* RACI checkbox row in member modal */
+.raci-row {
+  display: flex; gap: 6px;
+  margin-top: 5px;
+}
+.raci-check {
+  flex: 1 1 0;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(13, 15, 16, 0.5);
+  cursor: pointer;
+  font-family: var(--font); font-size: 10.5px;
+  color: var(--text-secondary);
+  transition: all var(--dur-micro);
+}
+.raci-check input { margin: 0; cursor: pointer; }
+.raci-check.checked { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+.raci-check .raci-letter { font-weight: 700; font-size: 11.5px; }
+.raci-check .raci-label { font-size: 10px; color: inherit; opacity: 0.85; }
 
 /* ============================================================
    ASK tab — free-form chat (transcript history accumulates)
@@ -567,22 +698,29 @@ body {
     <!-- cards inserted by panel.js -->
   </div>
 
-  <!-- VIEW: TEAM (stub) -->
+  <!-- VIEW: TEAM -->
   <div class="view" id="view-team" hidden>
-    <div class="empty-state">
+    <div id="team-toolbar">
+      <span id="team-count" class="team-toolbar-count">0 名成员</span>
+      <button id="team-add-btn" class="team-add-btn">+ 加成员</button>
+    </div>
+    <div id="team-list">
+      <!-- members rendered by panel.js -->
+    </div>
+    <div id="team-empty" class="empty-state" hidden>
       <div class="ico">👥</div>
-      团队成员 / 干系人关系<br>
-      <span style="opacity: 0.7">下一版会让你登记同事和他们的 RACI 关系（谁负责 / 谁批准 / 谁咨询 / 谁告知），Pace 帮你想"这事该找谁"。</span>
-      <div class="label">v0.2 · 即将上线</div>
+      还没添加过团队成员<br>
+      <span style="opacity: 0.7">登记下你的同事和他们的 RACI 关系（R 负责 / A 批准 / C 咨询 / I 告知），<br>Pace 在卡片和建议里就能具体说"找 谁 对齐"。</span>
+      <div class="label">点上面"+ 加成员"开始</div>
     </div>
   </div>
 
-  <!-- VIEW: IDENTITIES (stub) -->
+  <!-- VIEW: IDENTITIES (stub for now — derived from team) -->
   <div class="view" id="view-identities" hidden>
     <div class="empty-state">
       <div class="ico">🪪</div>
       身份 / agent 目录<br>
-      <span style="opacity: 0.7">类似飞书的人员目录，但每个身份可关联一个 agent。下一版你能看到团队里谁有 agent 化身，agent 在干什么。</span>
+      <span style="opacity: 0.7">类似飞书的人员目录，但每个身份可关联一个 agent。<br>v0.2 实装——每个团队成员可以接一个 agent 化身，你看到 agent 在干啥。</span>
       <div class="label">v0.2 · 即将上线</div>
     </div>
   </div>
@@ -605,6 +743,64 @@ body {
     <button id="send">SEND</button>
   </footer>
 
+</div>
+
+<!-- Member modal (add / edit team member) -->
+<div class="modal-backdrop" id="member-modal" aria-hidden="true">
+  <div class="modal" role="dialog">
+    <h2 id="member-modal-title">添加成员</h2>
+    <input type="hidden" id="member-id" value="">
+    <div class="field">
+      <label for="member-name">名字</label>
+      <input id="member-name" type="text" placeholder="比如：晓婷 / Tom / 张三" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="member-role">角色</label>
+      <select id="member-role">
+        <option value="">——</option>
+        <option value="PM">PM 产品经理</option>
+        <option value="Designer">Designer 设计</option>
+        <option value="Eng">Eng 工程师</option>
+        <option value="QA">QA 测试</option>
+        <option value="PO">PO 产品负责人</option>
+        <option value="Mgr">Mgr 管理者</option>
+        <option value="Ops">Ops 运营</option>
+        <option value="Marketing">Marketing 市场</option>
+        <option value="Other">其他</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>RACI（在当前项目里的关系）</label>
+      <div class="raci-row">
+        <label class="raci-check" data-raci="R">
+          <input type="checkbox" value="R">
+          <span><span class="raci-letter">R</span> <span class="raci-label">负责</span></span>
+        </label>
+        <label class="raci-check" data-raci="A">
+          <input type="checkbox" value="A">
+          <span><span class="raci-letter">A</span> <span class="raci-label">批准</span></span>
+        </label>
+        <label class="raci-check" data-raci="C">
+          <input type="checkbox" value="C">
+          <span><span class="raci-letter">C</span> <span class="raci-label">咨询</span></span>
+        </label>
+        <label class="raci-check" data-raci="I">
+          <input type="checkbox" value="I">
+          <span><span class="raci-letter">I</span> <span class="raci-label">告知</span></span>
+        </label>
+      </div>
+      <div class="hint">勾你打算和这位同事的相处方式。RACI 是项目管理标准，详见 PMBOK 干系人管理。</div>
+    </div>
+    <div class="field">
+      <label for="member-notes">备注（可选）</label>
+      <input id="member-notes" type="text" placeholder="比如：负责后端接口 / 沟通用钉钉 / 倾向直说" autocomplete="off">
+    </div>
+    <div class="row">
+      <button class="secondary" id="member-delete-btn" style="margin-right: auto; display: none">删除</button>
+      <button class="secondary" id="member-cancel-btn">取消</button>
+      <button class="primary" id="member-save-btn">保存</button>
+    </div>
+  </div>
 </div>
 
 <!-- Settings modal -->

@@ -28,6 +28,7 @@ const db = require('./db.cjs');
 const mentorPipeline = require('./mentor-pipeline.cjs');
 const ccBridge = require('./cc-bridge.cjs');
 const { buildTrayPng } = require('./tray-icon.cjs');
+const { GitWatcher } = require('./git-watcher.cjs');
 
 const WIN_WIDTH = 460;
 
@@ -157,6 +158,44 @@ ipcMain.handle('pace:mentor-ask', async (_event, input) => {
 ipcMain.handle('pace:settings-get', async () => config.getSettings());
 ipcMain.handle('pace:settings-save', async (_event, patch) => config.saveSettings(patch || {}));
 
+// --- IPC: team ---
+
+function resolveProjectId(opts) {
+  if (opts && typeof opts.project_id === 'string' && opts.project_id) return opts.project_id;
+  // Fallback: resolve from cwd's git root
+  const cwd = (opts && typeof opts.cwd === 'string' && opts.cwd) || process.cwd();
+  const ctx = ccBridge.collect({ cwd, includeTranscript: false });
+  return (ctx.git && ctx.git.git_root) || cwd;
+}
+
+ipcMain.handle('pace:team-list', async (_event, opts) => {
+  const projectId = resolveProjectId(opts);
+  return {
+    project_id: projectId,
+    members: db.listTeamMembers(projectId),
+  };
+});
+
+ipcMain.handle('pace:team-add', async (_event, input) => {
+  const projectId = resolveProjectId(input);
+  const id = db.addTeamMember({
+    project_id: projectId,
+    name: input.name,
+    role: input.role,
+    raci: input.raci,
+    notes: input.notes,
+  });
+  return { id, project_id: projectId };
+});
+
+ipcMain.handle('pace:team-update', async (_event, input) => {
+  return db.updateTeamMember(input.id, input.patch || {});
+});
+
+ipcMain.handle('pace:team-delete', async (_event, input) => {
+  return db.deleteTeamMember(input.id);
+});
+
 // --- IPC: history ---
 
 ipcMain.handle('pace:history-list', async (_event, limit) => {
@@ -176,14 +215,17 @@ ipcMain.handle('pace:context-snapshot', async (_event, opts) => {
   const ctx = ccBridge.collect({ cwd, includeTranscript, transcriptN: 8 });
   const settings = config.getSettings();
   let recent = [];
-  try {
-    recent = db.listMentorTurns(8);
-  } catch (_e) { /* db unavailable */ }
+  try { recent = db.listMentorTurns(8); } catch (_e) { /* db unavailable */ }
+  // Include team for the resolved project
+  const projectId = (ctx.git && ctx.git.git_root) || cwd;
+  let team = [];
+  try { team = db.listTeamMembers(projectId); } catch (_e) { /* ignore */ }
   return {
     elapsed_ms: Date.now() - t0,
     ctx,
     settings,
     recent_history: recent,
+    team,
   };
 });
 
@@ -223,6 +265,29 @@ ipcMain.on('pace:log', (_event, component, event, details, level) => {
     const stamp = new Date().toISOString().slice(0, 10);
     fs.appendFileSync(path.join(logDir, `pace-${stamp}.jsonl`), line + '\n');
   } catch (_e) { /* swallow */ }
+});
+
+// --- git watcher (commit events → ping renderer) ---
+
+const activeWatchers = new Map();   // git_root → GitWatcher
+function ensureGitWatcher(gitRoot) {
+  if (!gitRoot || activeWatchers.has(gitRoot)) return;
+  const w = new GitWatcher(gitRoot);
+  if (w.start()) {
+    w.on('change', (e) => {
+      // notify renderer; renderer decides whether to refresh
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('pace:git-change', { git_root: gitRoot, ...e });
+      }
+    });
+    activeWatchers.set(gitRoot, w);
+  }
+}
+
+ipcMain.handle('pace:git-watch', async (_event, opts) => {
+  const projectId = resolveProjectId(opts);
+  ensureGitWatcher(projectId);
+  return { project_id: projectId, watching: activeWatchers.has(projectId) };
 });
 
 // --- Lifecycle ---

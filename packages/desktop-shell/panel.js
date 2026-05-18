@@ -40,6 +40,24 @@ const minimaxBaseUrlInput  = document.getElementById('minimax-base-url');
 const minimaxApiKeyInput   = document.getElementById('minimax-api-key');
 const minimaxModelInput    = document.getElementById('minimax-model');
 
+// Team
+const teamListEl       = document.getElementById('team-list');
+const teamEmptyEl      = document.getElementById('team-empty');
+const teamCountEl      = document.getElementById('team-count');
+const teamAddBtn       = document.getElementById('team-add-btn');
+
+// Member modal
+const memberModalEl    = document.getElementById('member-modal');
+const memberModalTitle = document.getElementById('member-modal-title');
+const memberIdInput    = document.getElementById('member-id');
+const memberNameInput  = document.getElementById('member-name');
+const memberRoleSelect = document.getElementById('member-role');
+const memberNotesInput = document.getElementById('member-notes');
+const memberSaveBtn    = document.getElementById('member-save-btn');
+const memberCancelBtn  = document.getElementById('member-cancel-btn');
+const memberDeleteBtn  = document.getElementById('member-delete-btn');
+const raciChecks       = document.querySelectorAll('.raci-check');
+
 const VIEWS = {
   now: nowView,
   team: teamView,
@@ -118,9 +136,18 @@ function detectCommitTheme(commits) {
   return null;
 }
 
+function teamSummary(team) {
+  if (!team || !team.length) return null;
+  return team.map((m) => {
+    const raci = (m.raci || []).join('');
+    return `${m.name}${m.role ? '/' + m.role : ''}${raci ? '(' + raci + ')' : ''}`;
+  }).join(', ');
+}
+
 function generateCards(snapshot) {
-  const { ctx, settings, recent_history } = snapshot;
+  const { ctx, settings, recent_history, team } = snapshot;
   const cards = [];
+  const teamLine = teamSummary(team);
 
   // Card 0: API key missing — high priority
   if (!settings.has_minimax_config) {
@@ -134,6 +161,18 @@ function generateCards(snapshot) {
     });
   }
 
+  // Card: empty team prompt (only if git active + no team yet + has some commits)
+  if (ctx.git && ctx.git.available && (!team || team.length === 0)) {
+    cards.push({
+      id: 'no-team',
+      icon: '👥',
+      title: 'Pace 还不认识你的同事',
+      sub: '去"团队" tab 加几个，建议会从泛泛"找产品"具体到"找 Tom (A)"',
+      seed: null,
+      priority: 6,
+    });
+  }
+
   // Card: git dirty state
   if (ctx.git && ctx.git.available) {
     const dirty = ctx.git.dirty_count || 0;
@@ -143,7 +182,7 @@ function generateCards(snapshot) {
         icon: '📂',
         title: `工作区有 ${dirty} 个文件改动`,
         sub: '还没 commit',
-        seed: `用户当前在 ${ctx.git.git_root} 项目的 ${ctx.git.git_branch} 分支上，有 ${dirty} 个文件未提交。最近的 commit 主题是：${(ctx.git.recent_log || []).slice(0, 3).join(' / ')}。从 PMP 角度淡淡观察一下这个状态，并给一两个轻量下一步提示。请用观察语气，不要说教，80 字内。`,
+        seed: `用户当前在 ${ctx.git.git_root} 项目的 ${ctx.git.git_branch} 分支上，有 ${dirty} 个文件未提交。最近的 commit 主题是：${(ctx.git.recent_log || []).slice(0, 3).join(' / ')}。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMP 角度淡淡观察一下这个状态，并给一两个轻量下一步提示。${teamLine ? '如果合适，可以具体说找哪位同事对齐。' : ''}请用观察语气，不要说教，80 字内。`,
         priority: 1,
       });
     }
@@ -155,7 +194,7 @@ function generateCards(snapshot) {
         icon: '🌿',
         title: `直接在 ${ctx.git.git_branch} 分支工作`,
         sub: '没有切到 feature / 任务分支',
-        seed: `用户没有切 feature 分支，直接在 ${ctx.git.git_branch} 上做改动。这个工作流的潜在风险是什么？请用淡淡观察的语气，80 字内，给一两条提示。`,
+        seed: `用户没有切 feature 分支，直接在 ${ctx.git.git_branch} 上做改动。${teamLine ? '团队：' + teamLine + '。' : ''}这个工作流的潜在风险是什么？请用淡淡观察的语气，80 字内，给一两条提示。`,
         priority: 2,
       });
     }
@@ -168,7 +207,7 @@ function generateCards(snapshot) {
         icon: '📝',
         title: `最近 ${(ctx.git.recent_log || []).length} 个 commit 都在做 ${theme}`,
         sub: '从模式看，你处在一个具体的迭代阶段',
-        seed: `用户最近 5 个 commit 都是"${theme}"主题。从 PMBOK 5 大过程组看，这通常处在哪个阶段？阶段过渡前还需要做什么？请用淡淡观察的语气，80 字内。`,
+        seed: `用户最近 5 个 commit 都是"${theme}"主题。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMBOK 5 大过程组看，这通常处在哪个阶段？阶段过渡前还需要做什么？${teamLine ? '哪位同事最该被 loop 进来？' : ''}请用淡淡观察的语气，80 字内。`,
         priority: 3,
       });
     }
@@ -181,7 +220,7 @@ function generateCards(snapshot) {
       icon: '💬',
       title: `Claude Code 上次活动 ${timeAgo(ctx.cc_session.last_mtime_ms)}`,
       sub: '你刚才在和 cc 一起干活',
-      seed: `用户刚和 Claude Code 协作，上次 cc session 活动 ${timeAgo(ctx.cc_session.last_mtime_ms)}。从 PMP 视角，刚结束一段密集协作后，建议的"复盘 / 校准"动作是什么？请用淡淡观察的语气，80 字内。`,
+      seed: `用户刚和 Claude Code 协作，上次 cc session 活动 ${timeAgo(ctx.cc_session.last_mtime_ms)}。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMP 视角，刚结束一段密集协作后，建议的"复盘 / 校准"动作是什么？请用淡淡观察的语气，80 字内。`,
       priority: 4,
     });
   } else if (ctx.git && ctx.git.available) {
@@ -517,20 +556,215 @@ async function refreshAll() {
   }
   headerMetaEl.textContent = buildMetaLine(snap.ctx, snap.settings);
   renderNowFeed(snap);
+  renderTeam(snap.team || []);
 }
+
+// --- Team rendering ---
+
+function initials(name) {
+  if (!name) return '?';
+  const s = String(name).trim();
+  // For Chinese names: take last 2 chars; for Latin: take first letter of each token
+  if (/[一-龥]/.test(s)) {
+    return s.slice(-2);
+  }
+  const tokens = s.split(/\s+/).filter(Boolean);
+  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
+  return (tokens[0][0] + tokens[tokens.length - 1][0]).toUpperCase();
+}
+
+function renderTeam(members) {
+  teamListEl.innerHTML = '';
+  teamCountEl.textContent = `${members.length} 名成员`;
+  if (members.length === 0) {
+    teamEmptyEl.hidden = false;
+    return;
+  }
+  teamEmptyEl.hidden = true;
+  for (const m of members) {
+    const row = document.createElement('div');
+    row.className = 'team-member';
+    row.dataset.memberId = m.id;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'tm-avatar';
+    avatar.textContent = initials(m.name);
+    row.appendChild(avatar);
+
+    const body = document.createElement('div');
+    body.className = 'tm-body';
+
+    const line1 = document.createElement('div');
+    line1.className = 'tm-line1';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'tm-name';
+    nameEl.textContent = m.name;
+    line1.appendChild(nameEl);
+    if (m.role) {
+      const roleEl = document.createElement('span');
+      roleEl.className = 'tm-role';
+      roleEl.textContent = m.role;
+      line1.appendChild(roleEl);
+    }
+    if (Array.isArray(m.raci) && m.raci.length) {
+      const raciWrap = document.createElement('span');
+      raciWrap.className = 'tm-raci';
+      for (const letter of ['R', 'A', 'C', 'I']) {
+        if (m.raci.includes(letter)) {
+          const b = document.createElement('span');
+          b.className = 'tm-raci-badge ' + letter;
+          b.textContent = letter;
+          b.title = { R: '负责 (Responsible)', A: '批准 (Accountable)', C: '咨询 (Consulted)', I: '告知 (Informed)' }[letter];
+          raciWrap.appendChild(b);
+        }
+      }
+      line1.appendChild(raciWrap);
+    }
+    body.appendChild(line1);
+
+    if (m.notes) {
+      const notes = document.createElement('div');
+      notes.className = 'tm-notes';
+      notes.textContent = m.notes;
+      body.appendChild(notes);
+    }
+    row.appendChild(body);
+
+    const actions = document.createElement('div');
+    actions.className = 'tm-actions';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'tm-action-btn';
+    editBtn.textContent = '✎';
+    editBtn.title = '编辑';
+    editBtn.addEventListener('click', () => openMemberModal(m));
+    actions.appendChild(editBtn);
+    row.appendChild(actions);
+
+    teamListEl.appendChild(row);
+  }
+}
+
+// --- Member modal ---
+
+function getSelectedRaci() {
+  const result = [];
+  raciChecks.forEach((label) => {
+    const input = label.querySelector('input');
+    if (input && input.checked) result.push(label.dataset.raci);
+  });
+  return result;
+}
+
+function setRaci(values) {
+  raciChecks.forEach((label) => {
+    const input = label.querySelector('input');
+    const wanted = (values || []).includes(label.dataset.raci);
+    input.checked = wanted;
+    label.classList.toggle('checked', wanted);
+  });
+}
+
+raciChecks.forEach((label) => {
+  const input = label.querySelector('input');
+  input.addEventListener('change', () => {
+    label.classList.toggle('checked', input.checked);
+  });
+  // Also clicking label toggles input (default browser behavior, but ensure checked class updates)
+  label.addEventListener('click', () => setTimeout(() => label.classList.toggle('checked', input.checked), 0));
+});
+
+function openMemberModal(member) {
+  memberModalEl.classList.add('open');
+  memberModalEl.setAttribute('aria-hidden', 'false');
+  if (member && member.id) {
+    memberModalTitle.textContent = '编辑成员';
+    memberIdInput.value = String(member.id);
+    memberNameInput.value = member.name || '';
+    memberRoleSelect.value = member.role || '';
+    memberNotesInput.value = member.notes || '';
+    setRaci(member.raci || []);
+    memberDeleteBtn.style.display = 'inline-block';
+  } else {
+    memberModalTitle.textContent = '添加成员';
+    memberIdInput.value = '';
+    memberNameInput.value = '';
+    memberRoleSelect.value = '';
+    memberNotesInput.value = '';
+    setRaci([]);
+    memberDeleteBtn.style.display = 'none';
+  }
+  setTimeout(() => memberNameInput.focus(), 50);
+}
+function closeMemberModal() {
+  memberModalEl.classList.remove('open');
+  memberModalEl.setAttribute('aria-hidden', 'true');
+}
+
+teamAddBtn.addEventListener('click', () => openMemberModal(null));
+memberCancelBtn.addEventListener('click', closeMemberModal);
+memberModalEl.addEventListener('click', (e) => { if (e.target === memberModalEl) closeMemberModal(); });
+
+memberSaveBtn.addEventListener('click', async () => {
+  const name = memberNameInput.value.trim();
+  if (!name) {
+    memberNameInput.focus();
+    return;
+  }
+  const payload = {
+    name,
+    role: memberRoleSelect.value || null,
+    raci: getSelectedRaci(),
+    notes: memberNotesInput.value.trim() || null,
+  };
+  memberSaveBtn.disabled = true;
+  try {
+    if (memberIdInput.value) {
+      await window.pace.teamUpdate(Number(memberIdInput.value), payload);
+    } else {
+      await window.pace.teamAdd(payload);
+    }
+    closeMemberModal();
+    refreshAll();
+  } catch (err) {
+    alert('保存失败：' + err.message);
+  } finally {
+    memberSaveBtn.disabled = false;
+  }
+});
+
+memberDeleteBtn.addEventListener('click', async () => {
+  if (!memberIdInput.value) return;
+  if (!confirm('确定删除 "' + memberNameInput.value + '"？')) return;
+  await window.pace.teamDelete(Number(memberIdInput.value));
+  closeMemberModal();
+  refreshAll();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && memberModalEl.classList.contains('open')) closeMemberModal();
+});
 
 // --- Boot ---
 window.addEventListener('DOMContentLoaded', async () => {
   window.pace.log('panel', 'boot', { version: '0.1.0', form: 'feed-first-tabs' });
   await refreshAll();
+  // Start git fs watcher; receive events here for live refresh.
+  try {
+    await window.pace.startGitWatch();
+    window.pace.onGitChange((payload) => {
+      window.pace.log('panel', 'git_change', payload);
+      // Slight extra debounce — git index settles after the watcher fires
+      setTimeout(() => { if (!sendBtn.disabled) refreshAll(); }, 600);
+    });
+  } catch (_e) {}
   try {
     const s = await window.pace.windowState();
     if (s && s.pinned) pinBtn.classList.add('active');
   } catch (_e) {}
 });
 
-// Periodic refresh every 30s to catch new git activity (cheap snapshot)
+// Backup periodic refresh every 60s for clock-based cards (mentor-stale,
+// cc-activity timeAgo). Skip while a mentor turn is mid-flight.
 setInterval(() => {
-  // Don't refresh if Ask tab is in flight
   if (!sendBtn.disabled) refreshAll();
-}, 30_000);
+}, 60_000);
