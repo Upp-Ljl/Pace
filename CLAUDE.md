@@ -146,6 +146,74 @@ Claude 在本仓库工作时必须遵守的规则。
 
 ---
 
+## 推送 push 必读
+
+### 远端布局
+
+```
+git remote -v
+# origin   https://github.com/Upp-Ljl/Pace.git    (主，写)
+```
+
+Pace 与 cairn 共享同一个 Upp-Ljl 账号下的 PAT，但**独立 repo**——不要往 cairn repo 推。
+
+### Token 文件（已 gitignored）
+
+```
+D:\lll\pace\.pace-push-token\ljl-token.txt   # Upp-Ljl 的 Classic PAT (ghp_..., 40 chars)
+```
+
+是 cairn `D:\lll\cairn\.cairn-push-token\ljl-token.txt` 的副本。两边任一被刷新都要同步另一边。
+
+### Push 命令
+
+**裸 `git push` 在 Claude Code 跑不通**——无 TTY，GCM 弹窗卡住。必须用 PAT URL 直拼：
+
+```bash
+TOKEN=$(cat /d/lll/pace/.pace-push-token/ljl-token.txt | tr -d '[:space:]')
+# 默认 openssl backend
+git -c http.sslBackend=openssl push "https://x-access-token:${TOKEN}@github.com/Upp-Ljl/Pace.git" main 2>&1 | sed "s|${TOKEN}|<REDACTED>|g"
+# 失败切 schannel 重试
+git -c http.sslBackend=schannel push "https://x-access-token:${TOKEN}@github.com/Upp-Ljl/Pace.git" main 2>&1 | sed "s|${TOKEN}|<REDACTED>|g"
+```
+
+**必须 sed 替换 token 成 `<REDACTED>`**——push 出错时 URL 会出现在 stderr，会把 PAT 泄露到 chat log。
+
+### TLS 坑（cairn 经验，pace 同 OS / 同账号 也适用）
+
+push 偶发：
+```
+fatal: unable to access '...': TLS connect error:
+error:0A000126:SSL routines::unexpected eof while reading
+```
+
+`openssl` 和 `schannel` 都会偶发失败但会**交替成功**。失败时切 backend 重试，比死等同一 backend 快。详 cairn `CLAUDE.md §TLS 坑`。
+
+### 用户自己跑 push（替代路径）
+
+GCM 已缓存 Upp-Ljl 凭证（cairn 用过同账号）。用户在自己终端跑 `git push origin main` 或在 Claude Code 用 `!` 前缀，凭证走 GCM 不弹窗。
+
+### Fetch 同理
+
+```bash
+TOKEN=$(cat /d/lll/pace/.pace-push-token/ljl-token.txt | tr -d '[:space:]')
+git fetch "https://x-access-token:${TOKEN}@github.com/Upp-Ljl/Pace.git" main:refs/remotes/origin/main 2>&1 | sed "s|${TOKEN}|<REDACTED>|g"
+```
+
+### 不要用的方式（Claude Code 上下文）
+
+- `git push origin main`（裸）— GCM 弹窗 / 无 TTY / 卡住
+- `GIT_TERMINAL_PROMPT=0 git push origin main` — 报无凭证
+- `Authorization: Bearer ${TOKEN}` extraheader — GitHub HTTPS 不接受 Bearer
+- `gh` CLI — 这台机器没装
+
+### 如果 PAT 失效
+
+1. 用 Upp-Ljl 账号登 GitHub → Settings → Developer settings → Personal access tokens → 撤销旧的
+2. 新建一个 Classic PAT，scope 给 `repo`（write）
+3. 写入两处：`D:\lll\pace\.pace-push-token\ljl-token.txt` + `D:\lll\cairn\.cairn-push-token\ljl-token.txt`（保持同步）
+4. 都已 gitignored，**不要 commit**
+
 ## 环境特点
 
 - **OS**：Windows 11 Pro，主 shell PowerShell（git for Windows 自带的 bash 也可用）
