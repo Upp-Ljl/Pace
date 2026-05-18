@@ -1,18 +1,24 @@
 'use strict';
 
 /**
- * Pace desktop-shell — Electron main process (v0.1).
+ * Pace desktop-shell — Electron main process (v0.1, side-panel form).
  *
- * Responsibilities:
- *   - app lifecycle (whenReady / window-all-closed / activate)
- *   - single BrowserWindow loading panel.html
- *   - IPC routing: mentor pipeline, settings, history, log
+ * Form factor:
+ *   - Frameless BrowserWindow docked to right edge of primary display,
+ *     full screen height, ~460px wide.
+ *   - Tray icon (mentor-teal rounded square, generated at boot) is the
+ *     primary entry point. Click → toggle show/hide. Right-click → menu.
+ *   - Window close button hides to tray; only "Quit Pace" from tray
+ *     actually quits.
  *
- * Per PRODUCT.md decision #4 (passive responses only): no tray nudges,
- * no global shortcut popup, no notifications. Single foreground window.
+ * IPC routing: mentor pipeline, settings, history, context-snapshot,
+ * window controls, log.
+ *
+ * Per PRODUCT.md decision #4 (passive responses only): tray icon stays
+ * idle. No notifications, no nudges, no global hotkey by default.
  */
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -21,17 +27,36 @@ const config = require('./config.cjs');
 const db = require('./db.cjs');
 const mentorPipeline = require('./mentor-pipeline.cjs');
 const ccBridge = require('./cc-bridge.cjs');
+const { buildTrayPng } = require('./tray-icon.cjs');
+
+const WIN_WIDTH = 460;
 
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 
 function createMainWindow() {
+  const display = screen.getPrimaryDisplay();
+  const { workArea } = display;
+  const x = workArea.x + workArea.width - WIN_WIDTH;
+  const y = workArea.y;
+  const height = workArea.height;
+
   mainWindow = new BrowserWindow({
-    width: 820,
-    height: 720,
-    minWidth: 480,
-    minHeight: 480,
+    x, y,
+    width: WIN_WIDTH,
+    height,
+    minWidth: 380,
+    minHeight: 400,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#0d0f10',
     title: 'Pace',
-    backgroundColor: '#FAF7F2',
+    show: false,
+    skipTaskbar: true,
+    resizable: true,
+    movable: true,
+    alwaysOnTop: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -40,12 +65,70 @@ function createMainWindow() {
     },
   });
 
+  // Windows 11 mica backdrop — looks much better than flat #0d0f10
+  if (process.platform === 'win32') {
+    try { mainWindow.setBackgroundMaterial('mica'); } catch (_e) { /* OS too old */ }
+  }
+
   mainWindow.removeMenu();
   mainWindow.loadFile(path.join(__dirname, 'panel.html'));
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  mainWindow.once('ready-to-show', () => mainWindow.show());
+
+  // Close button (frameless custom header) → hide to tray; only the
+  // tray "Quit Pace" sets isQuitting=true.
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
   });
+}
+
+function createTray() {
+  const icon = nativeImage.createFromBuffer(buildTrayPng());
+  tray = new Tray(icon);
+  tray.setToolTip('Pace — PMP mentor for cc users');
+
+  const buildMenu = () => Menu.buildFromTemplate([
+    {
+      label: mainWindow && mainWindow.isVisible() ? 'Hide Pace' : 'Show Pace',
+      click: () => toggleWindow(),
+    },
+    { type: 'separator' },
+    {
+      label: 'Always on top',
+      type: 'checkbox',
+      checked: !!(mainWindow && mainWindow.isAlwaysOnTop()),
+      click: (item) => {
+        if (mainWindow) mainWindow.setAlwaysOnTop(item.checked);
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit Pace',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(buildMenu());
+  tray.on('click', () => toggleWindow());
+  tray.on('right-click', () => tray.setContextMenu(buildMenu()));
+}
+
+function toggleWindow() {
+  if (!mainWindow) {
+    createMainWindow();
+    return;
+  }
+  if (mainWindow.isVisible() && mainWindow.isFocused()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
 }
 
 // --- IPC: mentor ---
@@ -71,13 +154,8 @@ ipcMain.handle('pace:mentor-ask', async (_event, input) => {
 
 // --- IPC: settings ---
 
-ipcMain.handle('pace:settings-get', async () => {
-  return config.getSettings();
-});
-
-ipcMain.handle('pace:settings-save', async (_event, patch) => {
-  return config.saveSettings(patch || {});
-});
+ipcMain.handle('pace:settings-get', async () => config.getSettings());
+ipcMain.handle('pace:settings-save', async (_event, patch) => config.saveSettings(patch || {}));
 
 // --- IPC: history ---
 
@@ -89,7 +167,7 @@ ipcMain.handle('pace:history-list', async (_event, limit) => {
   }
 });
 
-// --- IPC: context snapshot (for sidebar dashboard) ---
+// --- IPC: context snapshot (sidebar / collapsed-bar dashboard) ---
 
 ipcMain.handle('pace:context-snapshot', async (_event, opts) => {
   const cwd = (opts && typeof opts.cwd === 'string' && opts.cwd) || process.cwd();
@@ -109,6 +187,25 @@ ipcMain.handle('pace:context-snapshot', async (_event, opts) => {
   };
 });
 
+// --- IPC: window controls (from custom frameless header) ---
+
+ipcMain.handle('pace:window-hide', () => {
+  if (mainWindow) mainWindow.hide();
+});
+ipcMain.handle('pace:window-pin-toggle', () => {
+  if (!mainWindow) return false;
+  const next = !mainWindow.isAlwaysOnTop();
+  mainWindow.setAlwaysOnTop(next);
+  return next;
+});
+ipcMain.handle('pace:window-state', () => {
+  if (!mainWindow) return { visible: false, pinned: false };
+  return {
+    visible: mainWindow.isVisible(),
+    pinned: mainWindow.isAlwaysOnTop(),
+  };
+});
+
 // --- IPC: log ---
 
 ipcMain.on('pace:log', (_event, component, event, details, level) => {
@@ -119,9 +216,7 @@ ipcMain.on('pace:log', (_event, component, event, details, level) => {
     event: event || 'log',
     details: details || null,
   });
-  // stdout (caught by parent if launched via npm). Future: ~/.pace/logs/.
   process.stdout.write(line + '\n');
-  // Best-effort file log for the user to grep, never block.
   try {
     const logDir = path.join(os.homedir(), '.pace', 'logs');
     fs.mkdirSync(logDir, { recursive: true });
@@ -133,20 +228,18 @@ ipcMain.on('pace:log', (_event, component, event, details, level) => {
 // --- Lifecycle ---
 
 app.whenReady().then(() => {
-  // Eagerly open DB so renderer can call settings/history without
-  // first-call latency surprises. Failure here is logged but not fatal —
-  // the mentor pipeline best-effort-persists.
-  try {
-    db.openDatabase();
-  } catch (err) {
-    process.stderr.write(`[pace] db open failed: ${err.message}\n`);
-  }
+  try { db.openDatabase(); }
+  catch (err) { process.stderr.write(`[pace] db open failed: ${err.message}\n`); }
+  createTray();
   createMainWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
-  });
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+// Don't quit on close-all-windows — Pace lives in tray.
+app.on('window-all-closed', () => { /* stay alive */ });
+
+app.on('before-quit', () => { isQuitting = true; });
+
+app.on('activate', () => {
+  if (!mainWindow) createMainWindow();
+  else { mainWindow.show(); mainWindow.focus(); }
 });

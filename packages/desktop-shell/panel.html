@@ -4,51 +4,43 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;">
-<title>Pace — PMP mentor for cc users</title>
+<title>Pace</title>
 <style>
 /* ==============================================================
-   Pace Panel — Design System (industrial / utilitarian)
-   Borrowed wholesale from cairn's panel design tokens:
-     dark surface chain, JetBrains Mono, 13px base, tight padding,
-     small radii, accent + alert + grey scale.
-   Pace shifts cairn's accent blue toward a calmer cyan-teal,
-   keeping the same density and information-rich feel.
+   Pace Panel — side-dock form factor (right-edge, ~460px wide)
+   Frameless window + Windows-11 mica backdrop + dark cairn tokens.
    ============================================================== */
 
 :root, html[data-pace-theme="dark"] {
-  --bg-base:      #0d0f10;
-  --bg-surface:   #15181a;
-  --bg-elevated:  #1c2024;
-  --border:       #262b30;
-  --border-focus: #3a4148;
+  --bg-base:      rgba(13, 15, 16, 0.78);   /* semi-transparent for mica */
+  --bg-solid:     #0d0f10;
+  --bg-surface:   rgba(21, 24, 26, 0.85);
+  --bg-elevated:  rgba(28, 32, 36, 0.94);
+  --border:       rgba(60, 68, 78, 0.55);
+  --border-focus: rgba(111, 181, 176, 0.55);
 
-  --text-primary:   #e6e8ec;
-  --text-secondary: #8a93a0;
-  --text-muted:     #545b65;
+  --text-primary:   #eaecf0;
+  --text-secondary: #98a2af;
+  --text-muted:     #5a6470;
 
-  --accent:       #6fb5b0;          /* mentor teal (replaces cairn blue) */
+  --accent:       #6fb5b0;        /* mentor teal */
   --accent-muted: #4e827e;
-  --accent-bg:    rgba(111, 181, 176, 0.10);
-  --accent-hover-bg: rgba(111, 181, 176, 0.20);
+  --accent-bg:    rgba(111, 181, 176, 0.12);
   --on-accent:    #0d0f10;
 
-  --user:         #b08968;          /* warm tan for user bubble */
-  --user-bg:      rgba(176, 137, 104, 0.15);
-
+  --user:         #cca57b;        /* warm tan for user bubble border */
+  --user-bg:      rgba(176, 137, 104, 0.22);
   --alert:        #e85545;
   --alert-bg:     rgba(232, 85, 69, 0.10);
-
-  --ok:           #6fb5b0;
   --warn:         #d4a85a;
-
-  --shadow: 0 1px 3px rgba(0,0,0,0.35);
+  --ok:           #6fb5b0;
 
   --font: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Menlo, Consolas, 'PingFang SC', monospace;
   --font-prose: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 
   --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-micro: 80ms;
   --dur-short: 150ms;
@@ -58,191 +50,178 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
-html { background: var(--bg-base); color: var(--text-primary); }
+html { background: transparent; color: var(--text-primary); }
 body {
+  margin: 0; overflow: hidden;
   font-family: var(--font);
   font-size: 13px; line-height: 1.5;
-  margin: 0; overflow: hidden;
-  background: var(--bg-base); color: var(--text-primary);
+  color: var(--text-primary);
+  background: transparent;  /* mica shows through */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  border-left: 1px solid var(--border);
 }
-#app { display: flex; flex-direction: column; height: 100vh; }
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: linear-gradient(180deg,
+    rgba(15, 18, 20, 0.72) 0%,
+    rgba(13, 15, 16, 0.78) 50%,
+    rgba(15, 18, 20, 0.72) 100%);
+}
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
-::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(120, 130, 140, 0.25); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(120, 130, 140, 0.45); }
 
 /* ============================================================
-   HEADER
+   HEADER — drag region + window controls
    ============================================================ */
 #header {
-  padding: 10px 14px;
-  background: var(--bg-surface);
+  height: 40px;
+  padding: 0 8px 0 14px;
+  background: rgba(15, 18, 20, 0.5);
   border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
   flex: 0 0 auto;
   user-select: none;
-  height: 44px;
+  -webkit-app-region: drag;       /* drag region for frameless window */
 }
 #brand {
   color: var(--accent);
-  font-weight: 600; font-size: 14px;
-  letter-spacing: 0.01em;
-  flex: 0 0 auto;
+  font-weight: 700; font-size: 13px;
+  letter-spacing: 0.04em;
 }
 #brand small {
   color: var(--text-muted);
-  font-weight: 400; font-size: 11px;
+  font-weight: 400; font-size: 10.5px;
   margin-left: 6px;
   letter-spacing: 0;
 }
-#cwd-label {
-  color: var(--text-muted);
-  font-size: 11px;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.icon-btn {
-  background: none;
-  border: 1px solid var(--border);
+#header .spacer { flex: 1 1 auto; }
+.win-btn {
+  -webkit-app-region: no-drag;
+  background: none; border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 2px 10px;
-  font-family: var(--font);
-  font-size: 12px;
+  padding: 4px 8px; margin: 0;
+  font-family: var(--font); font-size: 13px;
   border-radius: var(--radius-sm);
-  flex: 0 0 auto;
-  transition: all var(--dur-micro) var(--ease-out);
+  transition: all var(--dur-micro);
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 26px; min-width: 26px;
 }
-.icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+.win-btn:hover { color: var(--accent); background: var(--accent-bg); }
+.win-btn.active { color: var(--accent); background: var(--accent-bg); }
+.win-btn.danger:hover { color: var(--alert); background: var(--alert-bg); }
 
 /* ============================================================
-   MAIN — 2-pane: sidebar + chat
+   STATUS BAR — compact pills, click to expand
    ============================================================ */
-#main {
-  flex: 1 1 auto;
-  display: flex;
-  min-height: 0;
+#status-bar {
+  padding: 8px 12px;
+  background: rgba(20, 23, 26, 0.55);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  cursor: pointer;
+  transition: background var(--dur-micro);
 }
-#sidebar {
-  width: 280px;
-  flex: 0 0 280px;
-  background: var(--bg-surface);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+#status-bar:hover { background: rgba(26, 30, 34, 0.7); }
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px; color: var(--text-secondary);
+  background: rgba(28, 32, 36, 0.6);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-#chat-pane {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.pill .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-muted); flex: 0 0 auto;
 }
+.pill .dot.ok   { background: var(--ok);   box-shadow: 0 0 5px rgba(111,181,176,0.55); }
+.pill .dot.warn { background: var(--warn); }
+.pill .dot.alert{ background: var(--alert); }
+.pill b { color: var(--text-primary); font-weight: 600; }
 
-/* Sidebar sections */
-.section {
+/* Expanded detail panel (collapsed by default) */
+#detail-panel {
+  flex: 0 0 auto;
+  background: rgba(18, 21, 24, 0.85);
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--dur-medium) var(--ease-out),
+              padding var(--dur-medium) var(--ease-out);
+}
+#detail-panel.open {
+  max-height: 520px;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+.detail-section {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 9px 11px;
+  margin-bottom: 8px;
 }
-.section-title {
+.detail-section:last-child { margin-bottom: 0; }
+.detail-title {
   color: var(--accent);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 9.5px; font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.10em;
-  margin: 0 0 8px 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  margin: 0 0 6px 0;
+  display: flex; align-items: center; gap: 6px;
 }
-.section-title .dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
+.detail-title .dot {
+  width: 6px; height: 6px; border-radius: 50%;
   background: var(--text-muted);
-  flex: 0 0 auto;
 }
-.section-title .dot.ok    { background: var(--ok);   box-shadow: 0 0 6px rgba(111,181,176,0.6); }
-.section-title .dot.warn  { background: var(--warn); }
-.section-title .dot.alert { background: var(--alert); }
-
-.kv { display: grid; grid-template-columns: 70px 1fr; gap: 4px 8px; font-size: 11px; }
+.detail-title .dot.ok   { background: var(--ok); box-shadow: 0 0 5px rgba(111,181,176,0.55); }
+.detail-title .dot.warn { background: var(--warn); }
+.detail-title .dot.alert{ background: var(--alert); }
+.kv { display: grid; grid-template-columns: 64px 1fr; gap: 3px 8px; font-size: 11px; }
 .kv .k { color: var(--text-muted); }
-.kv .v {
-  color: var(--text-primary);
-  word-break: break-all;
-}
+.kv .v { color: var(--text-primary); word-break: break-all; }
 .kv .v.muted { color: var(--text-muted); }
 .kv .v.accent { color: var(--accent); }
 .kv .v.warn { color: var(--warn); }
 .kv .v.alert { color: var(--alert); }
-
-.log-list {
-  list-style: none;
-  margin: 0; padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
+.log-list { list-style: none; margin: 6px 0 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .log-list li {
-  font-size: 10.5px;
-  color: var(--text-secondary);
-  padding: 2px 0;
-  border-bottom: 1px dashed transparent;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 10.5px; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .log-list li .ts { color: var(--text-muted); margin-right: 6px; }
 
 /* ============================================================
    CHAT
    ============================================================ */
-#chat-tabbar {
-  padding: 0 14px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 32px;
-  flex: 0 0 auto;
-}
-.chat-tab {
-  background: none; border: none;
-  color: var(--text-muted);
-  font-family: var(--font); font-size: 11px;
-  padding: 6px 12px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color var(--dur-micro), border-color var(--dur-micro);
-}
-.chat-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-.chat-tab:not(.active):hover { color: var(--text-primary); }
-
 #chat {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 16px;
+  padding: 14px 14px 6px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .msg {
   font-family: var(--font-prose);
-  font-size: 13.5px; line-height: 1.6;
-  max-width: 88%;
-  padding: 10px 13px;
+  font-size: 13px; line-height: 1.6;
+  max-width: 92%;
+  padding: 9px 12px;
   border-radius: var(--radius-md);
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -257,21 +236,17 @@ body {
 }
 .msg.mentor {
   align-self: flex-start;
-  background: var(--bg-surface);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
+  border-left: 2px solid var(--accent);
   color: var(--text-primary);
   border-bottom-left-radius: 3px;
 }
 .msg.system {
-  align-self: center;
-  max-width: 92%;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 11.5px;
-  font-style: italic;
-  padding: 4px 10px;
-  text-align: center;
+  align-self: center; max-width: 96%;
+  background: transparent; color: var(--text-muted);
+  font-size: 11.5px; font-style: italic;
+  padding: 4px 8px; text-align: center;
   font-family: var(--font);
 }
 .msg.error {
@@ -281,89 +256,82 @@ body {
   color: var(--alert);
 }
 .msg .ts {
-  display: block;
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 6px;
+  display: block; font-size: 10px;
+  color: var(--text-muted); margin-top: 5px;
   font-family: var(--font);
 }
 
-/* Markdown-rendered content inside .msg.mentor */
-.msg.mentor .block { margin: 0 0 10px 0; }
+/* Markdown rendering */
+.msg.mentor .block { margin: 0 0 9px 0; }
 .msg.mentor .block:last-child { margin-bottom: 0; }
 .msg.mentor code {
-  background: rgba(111, 181, 176, 0.12);
+  background: var(--accent-bg);
   color: var(--accent);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-family: var(--font);
-  font-size: 0.88em;
+  padding: 1px 5px; border-radius: 3px;
+  font-family: var(--font); font-size: 0.88em;
 }
 .msg.mentor strong { color: var(--accent); }
 .msg.mentor blockquote {
   border-left: 2px solid var(--accent-muted);
-  padding-left: 10px;
+  padding-left: 9px;
   color: var(--text-secondary);
-  margin: 0 0 10px 0;
+  margin: 0 0 9px 0;
   font-style: italic;
 }
-.msg.mentor ul { margin: 4px 0 10px 18px; padding: 0; }
-.msg.mentor li { margin: 3px 0; }
+.msg.mentor ul { margin: 3px 0 9px 16px; padding: 0; }
+.msg.mentor li { margin: 2px 0; }
 .msg.mentor h1, .msg.mentor h2, .msg.mentor h3 {
   color: var(--accent);
-  margin: 10px 0 6px 0;
+  margin: 9px 0 5px 0;
   font-family: var(--font);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
-.msg.mentor h1 { font-size: 14px; }
-.msg.mentor h2 { font-size: 13px; }
-.msg.mentor h3 { font-size: 12.5px; }
+.msg.mentor h1 { font-size: 13px; }
+.msg.mentor h2 { font-size: 12.5px; }
+.msg.mentor h3 { font-size: 12px; }
 .msg.mentor hr {
   border: none;
   border-top: 1px dashed var(--border);
-  margin: 10px 0;
+  margin: 9px 0;
 }
 
 /* ============================================================
-   INPUT BAR
+   INPUT
    ============================================================ */
 #input-bar {
-  padding: 10px 14px;
+  padding: 10px 12px;
   border-top: 1px solid var(--border);
-  background: var(--bg-surface);
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
+  background: rgba(15, 18, 20, 0.6);
+  display: flex; gap: 8px; align-items: flex-end;
   flex: 0 0 auto;
 }
 #input {
   flex: 1 1 auto;
   resize: none;
-  min-height: 42px;
-  max-height: 160px;
+  min-height: 42px; max-height: 140px;
   padding: 9px 11px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--bg-base);
+  background: rgba(13, 15, 16, 0.7);
   color: var(--text-primary);
   font-family: var(--font-prose);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 13px; line-height: 1.5;
   outline: none;
   transition: border-color var(--dur-micro);
 }
 #input:focus { border-color: var(--accent); }
 #input::placeholder { color: var(--text-muted); }
 #send {
-  padding: 9px 18px;
+  padding: 9px 14px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--accent);
   color: var(--on-accent);
-  font-weight: 600;
-  font-family: var(--font);
-  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font); font-size: 11px;
   cursor: pointer;
+  letter-spacing: 0.06em;
   transition: all var(--dur-micro);
 }
 #send:hover { background: var(--accent-muted); border-color: var(--accent-muted); }
@@ -376,29 +344,22 @@ body {
    FOOTER
    ============================================================ */
 #footer {
-  padding: 5px 14px;
-  background: var(--bg-surface);
+  padding: 5px 12px;
+  background: rgba(15, 18, 20, 0.6);
   border-top: 1px solid var(--border);
   color: var(--text-muted);
   font-size: 10.5px;
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 14px;
+  display: flex; align-items: center; gap: 10px;
+  white-space: nowrap; overflow: hidden;
 }
-#footer .status-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text-muted);
-}
-#footer .status-dot.ok   { background: var(--ok);   box-shadow: 0 0 4px rgba(111,181,176,0.6); }
+#footer .footer-item { display: flex; gap: 5px; align-items: center; overflow: hidden; text-overflow: ellipsis; }
+#footer .footer-item.right { margin-left: auto; }
+#footer code { font-family: var(--font); color: var(--text-secondary); }
+#footer .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); flex: 0 0 auto; }
+#footer .status-dot.ok   { background: var(--ok); box-shadow: 0 0 5px rgba(111,181,176,0.6); }
 #footer .status-dot.warn { background: var(--warn); }
 #footer .status-dot.alert{ background: var(--alert); }
-#footer .footer-item { display: flex; gap: 6px; align-items: center; }
-#footer .footer-item.right { margin-left: auto; }
-#footer code {
-  font-family: var(--font);
-  color: var(--text-secondary);
-}
 
 /* ============================================================
    SETTINGS MODAL
@@ -406,71 +367,62 @@ body {
 .modal-backdrop {
   display: none;
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0,0,0,0.55);
   align-items: center; justify-content: center;
   z-index: 10;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(3px);
 }
 .modal-backdrop.open { display: flex; }
 .modal {
   background: var(--bg-elevated);
   border: 1px solid var(--border-focus);
   border-radius: var(--radius-lg);
-  width: min(560px, 92vw);
+  width: min(420px, 92vw);
   max-height: 86vh; overflow-y: auto;
-  padding: 22px 24px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  padding: 18px 20px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.5);
 }
 .modal h2 {
-  margin: 0 0 16px 0;
+  margin: 0 0 14px 0;
   color: var(--accent);
-  font-size: 14px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.10em;
 }
-.modal .field { margin-bottom: 14px; }
+.modal .field { margin-bottom: 12px; }
 .modal label {
-  display: block; margin-bottom: 5px;
-  font-size: 11px;
-  color: var(--text-muted);
-  font-weight: 600;
-  text-transform: uppercase;
+  display: block; margin-bottom: 4px;
+  font-size: 10.5px; color: var(--text-muted);
+  font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 .modal input[type="password"],
 .modal input[type="text"],
 .modal select {
-  width: 100%; padding: 8px 10px;
+  width: 100%; padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-base);
+  background: rgba(13, 15, 16, 0.85);
   color: var(--text-primary);
   font-family: var(--font); font-size: 12px;
   outline: none;
-  transition: border-color var(--dur-micro);
 }
 .modal input:focus, .modal select:focus { border-color: var(--accent); }
 .modal .hint {
-  font-size: 11px; color: var(--text-muted);
-  margin-top: 4px; line-height: 1.45;
+  font-size: 10.5px; color: var(--text-muted);
+  margin-top: 3px; line-height: 1.45;
   font-family: var(--font);
 }
 .modal .hint code {
-  background: rgba(111,181,176,0.08);
-  color: var(--accent);
+  background: var(--accent-bg); color: var(--accent);
   padding: 1px 4px; border-radius: 2px;
 }
-.modal .row {
-  display: flex; gap: 8px; justify-content: flex-end;
-  margin-top: 18px;
-}
+.modal .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 .modal button {
-  padding: 7px 16px;
+  padding: 6px 14px;
   border-radius: var(--radius-sm);
-  font-weight: 600; cursor: pointer;
-  font-family: var(--font); font-size: 11px;
-  text-transform: uppercase; letter-spacing: 0.06em;
+  font-weight: 700; cursor: pointer;
+  font-family: var(--font); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.07em;
   transition: all var(--dur-micro);
 }
 .modal button.primary {
@@ -479,30 +431,22 @@ body {
 }
 .modal button.primary:hover { background: var(--accent-muted); border-color: var(--accent-muted); }
 .modal button.secondary {
-  background: transparent;
-  color: var(--text-secondary);
+  background: transparent; color: var(--text-secondary);
   border: 1px solid var(--border);
 }
 .modal button.secondary:hover { border-color: var(--accent); color: var(--accent); }
 .modal .status-row {
-  font-size: 11px;
-  background: var(--bg-base);
-  padding: 8px 10px;
+  font-size: 10.5px;
+  background: rgba(13, 15, 16, 0.85);
+  padding: 7px 9px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  margin-top: 10px;
-  font-family: var(--font);
+  margin-top: 8px; font-family: var(--font);
 }
-.modal .status-row.ok    { color: var(--ok);    border-color: var(--accent-muted); }
-.modal .status-row.warn  { color: var(--warn);  border-color: var(--warn); }
+.modal .status-row.ok   { color: var(--ok); border-color: var(--accent-muted); }
+.modal .status-row.warn { color: var(--warn); border-color: var(--warn); }
 
-/* ============================================================
-   Animations
-   ============================================================ */
-@keyframes dotPulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.4; }
-}
+/* Spinner */
 .spinner {
   display: inline-block;
   width: 8px; height: 8px;
@@ -519,109 +463,98 @@ body {
 <body>
 <div id="app">
 
-  <!-- HEADER -->
+  <!-- HEADER: drag region + window controls -->
   <header id="header">
-    <span id="brand">PACE <small>· PMP mentor for cc users</small></span>
-    <span id="cwd-label">cwd: —</span>
-    <button class="icon-btn" id="refresh-sidebar" title="刷新侧栏 dashboard">↻</button>
-    <button class="icon-btn" id="open-settings" title="设置">⚙</button>
+    <span id="brand">PACE <small>· PMP mentor</small></span>
+    <span class="spacer"></span>
+    <button class="win-btn" id="open-settings" title="设置" aria-label="设置">⚙</button>
+    <button class="win-btn" id="toggle-pin" title="置顶" aria-label="置顶">📌</button>
+    <button class="win-btn danger" id="close-window" title="收回托盘" aria-label="收回托盘">✕</button>
   </header>
 
-  <!-- MAIN -->
-  <div id="main">
-
-    <!-- LEFT SIDEBAR: live dashboard -->
-    <aside id="sidebar">
-
-      <!-- Project / git -->
-      <div class="section" id="sec-project">
-        <div class="section-title"><span class="dot" id="proj-dot"></span>PROJECT</div>
-        <div class="kv">
-          <span class="k">root</span>     <span class="v" id="proj-root">—</span>
-          <span class="k">branch</span>   <span class="v accent" id="proj-branch">—</span>
-          <span class="k">remote</span>   <span class="v muted" id="proj-remote">—</span>
-          <span class="k">dirty</span>    <span class="v" id="proj-dirty">—</span>
-        </div>
-        <ul class="log-list" id="proj-log" style="margin-top:8px"></ul>
-      </div>
-
-      <!-- cc session -->
-      <div class="section" id="sec-cc">
-        <div class="section-title"><span class="dot" id="cc-dot"></span>CC SESSION</div>
-        <div class="kv">
-          <span class="k">found</span>     <span class="v" id="cc-found">—</span>
-          <span class="k">file</span>      <span class="v muted" id="cc-file">—</span>
-          <span class="k">mtime</span>     <span class="v muted" id="cc-mtime">—</span>
-          <span class="k">turns</span>     <span class="v" id="cc-turns">—</span>
-        </div>
-      </div>
-
-      <!-- LLM / MiniMax -->
-      <div class="section" id="sec-llm">
-        <div class="section-title"><span class="dot" id="llm-dot"></span>LLM</div>
-        <div class="kv">
-          <span class="k">provider</span>  <span class="v accent">MiniMax</span>
-          <span class="k">model</span>     <span class="v" id="llm-model">—</span>
-          <span class="k">endpoint</span>  <span class="v muted" id="llm-host">—</span>
-          <span class="k">key src</span>   <span class="v" id="llm-keysrc">—</span>
-        </div>
-      </div>
-
-      <!-- Recent history -->
-      <div class="section" id="sec-history">
-        <div class="section-title"><span class="dot ok"></span>RECENT TURNS</div>
-        <ul class="log-list" id="history-list">
-          <li class="muted" style="color: var(--text-muted)">—</li>
-        </ul>
-      </div>
-
-    </aside>
-
-    <!-- RIGHT: chat pane -->
-    <section id="chat-pane">
-
-      <div id="chat-tabbar">
-        <button class="chat-tab active" data-tab="chat" type="button">Chat</button>
-        <span style="color: var(--text-muted); font-size: 10px; margin-left: auto">
-          PMP system prompt · v0.1
-        </span>
-      </div>
-
-      <main id="chat" aria-live="polite">
-        <div class="msg system">
-          Pace v0.1 · 暗主题 cairn-style · MiniMax-M2.7 driven.
-          问一句"我现在在干啥"，或挑个具体场景：怎么对齐 stakeholders / 这个改动该不该 ship / 怎么开口跟产品讲。
-        </div>
-      </main>
-
-      <footer id="input-bar">
-        <textarea id="input"
-                  placeholder="比如：我刚改了 API，怎么跟前端 lead 开口对齐？"
-                  rows="2"
-                  autofocus></textarea>
-        <button id="send">SEND</button>
-      </footer>
-
-    </section>
-
+  <!-- STATUS BAR: compact context pills (click to expand) -->
+  <div id="status-bar" title="点击展开详细 dashboard">
+    <span class="pill" id="pill-project">
+      <span class="dot" id="pill-project-dot"></span>
+      <span id="pill-project-text">project: —</span>
+    </span>
+    <span class="pill" id="pill-cc">
+      <span class="dot" id="pill-cc-dot"></span>
+      <span id="pill-cc-text">cc: —</span>
+    </span>
+    <span class="pill" id="pill-llm">
+      <span class="dot" id="pill-llm-dot"></span>
+      <span id="pill-llm-text">llm: —</span>
+    </span>
   </div>
 
-  <!-- FOOTER status bar -->
+  <!-- DETAIL PANEL (collapsed by default) -->
+  <div id="detail-panel" aria-hidden="true">
+    <div class="detail-section">
+      <div class="detail-title"><span class="dot" id="d-proj-dot"></span>PROJECT</div>
+      <div class="kv">
+        <span class="k">root</span>   <span class="v" id="d-proj-root">—</span>
+        <span class="k">branch</span> <span class="v accent" id="d-proj-branch">—</span>
+        <span class="k">remote</span> <span class="v muted" id="d-proj-remote">—</span>
+        <span class="k">dirty</span>  <span class="v" id="d-proj-dirty">—</span>
+        <span class="k">cwd</span>    <span class="v muted" id="d-proj-cwd">—</span>
+      </div>
+      <ul class="log-list" id="d-proj-log"></ul>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title"><span class="dot" id="d-cc-dot"></span>CC SESSION</div>
+      <div class="kv">
+        <span class="k">found</span>  <span class="v" id="d-cc-found">—</span>
+        <span class="k">file</span>   <span class="v muted" id="d-cc-file">—</span>
+        <span class="k">mtime</span>  <span class="v muted" id="d-cc-mtime">—</span>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title"><span class="dot" id="d-llm-dot"></span>LLM</div>
+      <div class="kv">
+        <span class="k">provider</span> <span class="v accent">MiniMax</span>
+        <span class="k">model</span>    <span class="v" id="d-llm-model">—</span>
+        <span class="k">host</span>     <span class="v muted" id="d-llm-host">—</span>
+        <span class="k">key src</span>  <span class="v" id="d-llm-keysrc">—</span>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title"><span class="dot ok"></span>RECENT TURNS</div>
+      <ul class="log-list" id="d-history-list">
+        <li style="color: var(--text-muted)">—</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <main id="chat" aria-live="polite">
+    <div class="msg system">
+      Pace · 右侧 dock 形态 · MiniMax-M2.7。
+      问一句你想问的，或点上方状态条展开 dashboard。
+    </div>
+  </main>
+
+  <!-- INPUT -->
+  <footer id="input-bar">
+    <textarea id="input"
+              placeholder="比如：这个改动该不该 ship？怎么跟产品对齐？"
+              rows="2"
+              autofocus></textarea>
+    <button id="send">SEND</button>
+  </footer>
+
+  <!-- FOOTER status -->
   <footer id="footer">
     <span class="footer-item">
       <span class="status-dot" id="footer-llm-dot"></span>
-      <span id="footer-llm-status">未配 key</span>
-    </span>
-    <span class="footer-item">
-      <span style="color:var(--text-muted)">last turn:</span>
-      <code id="footer-last-latency">—</code>
-    </span>
-    <span class="footer-item">
-      <span style="color:var(--text-muted)">model:</span>
       <code id="footer-model">—</code>
     </span>
+    <span class="footer-item">
+      <span style="color: var(--text-muted)">last:</span>
+      <code id="footer-last-latency">—</code>
+    </span>
     <span class="footer-item right">
-      <code id="footer-config-path">—</code>
+      <code id="footer-key-src">—</code>
     </span>
   </footer>
 
@@ -635,29 +568,28 @@ body {
     <div class="field">
       <label for="minimax-base-url">MiniMax Base URL</label>
       <input id="minimax-base-url" type="text" placeholder="https://api.minimaxi.com/v1" autocomplete="off">
-      <div class="hint">OpenAI-compatible 端点根路径（不含 <code>/chat/completions</code>）。默认 <code>https://api.minimaxi.com/v1</code>。</div>
+      <div class="hint">默认 <code>https://api.minimaxi.com/v1</code>。</div>
     </div>
 
     <div class="field">
       <label for="minimax-api-key">MiniMax API Key</label>
       <input id="minimax-api-key" type="password" placeholder="粘贴 Bearer token" autocomplete="off">
-      <div class="hint">本地存到 <code>~/.pace/config.json</code>。可留空使用环境变量 <code>MINIMAX_API_KEY</code>。</div>
+      <div class="hint">本地存到 <code>~/.pace/config.json</code>。或设环境变量 <code>MINIMAX_API_KEY</code>。</div>
     </div>
 
     <div class="field">
       <label for="minimax-model">MiniMax Model</label>
       <input id="minimax-model" type="text" placeholder="MiniMax-M2.7" autocomplete="off">
-      <div class="hint">模型名要和 key 有权限的对应。默认 <code>MiniMax-M2.7</code>。</div>
+      <div class="hint">默认 <code>MiniMax-M2.7</code>。</div>
     </div>
 
     <div class="field">
       <label for="knowledge-source">Knowledge Source</label>
       <select id="knowledge-source">
         <option value="pmp">PMP（默认）</option>
-        <option value="okr" disabled>OKR（v0.2+ 占位）</option>
-        <option value="agile" disabled>Agile（v0.2+ 占位）</option>
+        <option value="okr" disabled>OKR（v0.2+）</option>
+        <option value="agile" disabled>Agile（v0.2+）</option>
       </select>
-      <div class="hint">v0.1 锁定 PMP；切换占位等 v0.2 实现。</div>
     </div>
 
     <div id="settings-status" class="status-row" aria-live="polite">加载中…</div>

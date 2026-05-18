@@ -16,6 +16,9 @@ const api = {
   saveSettings:     (patch)  => ipcRenderer.invoke('pace:settings-save', patch || {}),
   listHistory:      (limit)  => ipcRenderer.invoke('pace:history-list', limit || 30),
   contextSnapshot:  (opts)   => ipcRenderer.invoke('pace:context-snapshot', opts || {}),
+  hideWindow:       ()       => ipcRenderer.invoke('pace:window-hide'),
+  togglePin:        ()       => ipcRenderer.invoke('pace:window-pin-toggle'),
+  windowState:      ()       => ipcRenderer.invoke('pace:window-state'),
   log: (component, event, details, level) => {
     try { ipcRenderer.send('pace:log', component, event, details, level); } catch (_e) {}
   },

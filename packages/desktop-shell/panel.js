@@ -1,166 +1,199 @@
 'use strict';
 
 /**
- * Pace panel — v0.1 dashboard + chat.
+ * Pace panel — side-dock form factor (frameless, 460px wide).
  *
- *   Sidebar (left): live context snapshot (project / cc / LLM / history)
- *   Chat (right):   markdown-rendered mentor replies
- *   Footer:         status pill + last latency + model + config path
+ * Layout:
+ *   header (drag region + ⚙ 📌 ✕)
+ *   status-bar (compact pills, click → toggle detail panel)
+ *   detail-panel (collapsed by default)
+ *   chat (main, scrollable)
+ *   input-bar
+ *   footer (model · last latency · key src)
  *
- * Markdown rendering is XSS-safe — DOM API only, never innerHTML for
- * LLM-derived text. Supports **bold**, `code`, > blockquote, - bullets,
- * # / ## / ### headers, --- hr, paragraphs.
+ * Markdown is rendered via DOM API only — never innerHTML for
+ * LLM-derived text.
  */
 
 // --- DOM handles ---
-
 const chatEl  = document.getElementById('chat');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('send');
 
-const cwdLabelEl = document.getElementById('cwd-label');
+const settingsBtn  = document.getElementById('open-settings');
+const pinBtn       = document.getElementById('toggle-pin');
+const closeBtn     = document.getElementById('close-window');
 
-const projDotEl    = document.getElementById('proj-dot');
-const projRootEl   = document.getElementById('proj-root');
-const projBranchEl = document.getElementById('proj-branch');
-const projRemoteEl = document.getElementById('proj-remote');
-const projDirtyEl  = document.getElementById('proj-dirty');
-const projLogEl    = document.getElementById('proj-log');
+const statusBarEl    = document.getElementById('status-bar');
+const detailPanelEl  = document.getElementById('detail-panel');
 
-const ccDotEl   = document.getElementById('cc-dot');
-const ccFoundEl = document.getElementById('cc-found');
-const ccFileEl  = document.getElementById('cc-file');
-const ccMtimeEl = document.getElementById('cc-mtime');
-const ccTurnsEl = document.getElementById('cc-turns');
+// Pills (compact)
+const pillProjectText = document.getElementById('pill-project-text');
+const pillProjectDot  = document.getElementById('pill-project-dot');
+const pillCcText      = document.getElementById('pill-cc-text');
+const pillCcDot       = document.getElementById('pill-cc-dot');
+const pillLlmText     = document.getElementById('pill-llm-text');
+const pillLlmDot      = document.getElementById('pill-llm-dot');
 
-const llmDotEl    = document.getElementById('llm-dot');
-const llmModelEl  = document.getElementById('llm-model');
-const llmHostEl   = document.getElementById('llm-host');
-const llmKeySrcEl = document.getElementById('llm-keysrc');
+// Detail panel
+const dProjDot    = document.getElementById('d-proj-dot');
+const dProjRoot   = document.getElementById('d-proj-root');
+const dProjBranch = document.getElementById('d-proj-branch');
+const dProjRemote = document.getElementById('d-proj-remote');
+const dProjDirty  = document.getElementById('d-proj-dirty');
+const dProjCwd    = document.getElementById('d-proj-cwd');
+const dProjLog    = document.getElementById('d-proj-log');
 
-const historyListEl = document.getElementById('history-list');
+const dCcDot   = document.getElementById('d-cc-dot');
+const dCcFound = document.getElementById('d-cc-found');
+const dCcFile  = document.getElementById('d-cc-file');
+const dCcMtime = document.getElementById('d-cc-mtime');
 
-const footerLlmDotEl     = document.getElementById('footer-llm-dot');
-const footerLlmStatusEl  = document.getElementById('footer-llm-status');
-const footerLatencyEl    = document.getElementById('footer-last-latency');
-const footerModelEl      = document.getElementById('footer-model');
-const footerConfigPathEl = document.getElementById('footer-config-path');
+const dLlmDot    = document.getElementById('d-llm-dot');
+const dLlmModel  = document.getElementById('d-llm-model');
+const dLlmHost   = document.getElementById('d-llm-host');
+const dLlmKeysrc = document.getElementById('d-llm-keysrc');
 
-const refreshSidebarBtn = document.getElementById('refresh-sidebar');
-const openSettingsBtn   = document.getElementById('open-settings');
-const closeSettingsBtn  = document.getElementById('close-settings');
-const saveSettingsBtn   = document.getElementById('save-settings');
-const modalEl           = document.getElementById('modal');
-const settingsStatusEl  = document.getElementById('settings-status');
+const dHistoryList = document.getElementById('d-history-list');
 
-const minimaxBaseUrlInput   = document.getElementById('minimax-base-url');
-const minimaxApiKeyInput    = document.getElementById('minimax-api-key');
-const minimaxModelInput     = document.getElementById('minimax-model');
-const knowledgeSourceSelect = document.getElementById('knowledge-source');
+// Footer
+const footerLlmDot       = document.getElementById('footer-llm-dot');
+const footerModel        = document.getElementById('footer-model');
+const footerLastLatency  = document.getElementById('footer-last-latency');
+const footerKeySrc       = document.getElementById('footer-key-src');
+
+// Settings modal
+const modalEl              = document.getElementById('modal');
+const closeSettingsBtn     = document.getElementById('close-settings');
+const saveSettingsBtn      = document.getElementById('save-settings');
+const settingsStatusEl     = document.getElementById('settings-status');
+const minimaxBaseUrlInput  = document.getElementById('minimax-base-url');
+const minimaxApiKeyInput   = document.getElementById('minimax-api-key');
+const minimaxModelInput    = document.getElementById('minimax-model');
+const knowledgeSourceSelect= document.getElementById('knowledge-source');
 
 // --- helpers ---
-
-function ts() {
-  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-}
-
-function truncate(s, n) {
-  if (!s) return '—';
-  return s.length > n ? s.slice(0, n) + '…' : s;
-}
-
+function ts() { return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); }
+function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || '—'); }
 function timeAgo(ms) {
   if (!ms) return '—';
   const dt = Date.now() - ms;
-  if (dt < 60_000) return `${Math.floor(dt / 1000)}s ago`;
-  if (dt < 3600_000) return `${Math.floor(dt / 60_000)}m ago`;
-  if (dt < 86400_000) return `${Math.floor(dt / 3600_000)}h ago`;
-  return `${Math.floor(dt / 86400_000)}d ago`;
+  if (dt < 60_000) return Math.floor(dt / 1000) + 's';
+  if (dt < 3600_000) return Math.floor(dt / 60_000) + 'm';
+  if (dt < 86400_000) return Math.floor(dt / 3600_000) + 'h';
+  return Math.floor(dt / 86400_000) + 'd';
 }
-
 function setDot(el, level) {
   el.classList.remove('ok', 'warn', 'alert');
   if (level) el.classList.add(level);
 }
 
-// --- Sidebar populator ---
+// --- Detail panel toggle ---
+statusBarEl.addEventListener('click', () => {
+  const open = detailPanelEl.classList.toggle('open');
+  detailPanelEl.setAttribute('aria-hidden', open ? 'false' : 'true');
+});
 
+// --- Window controls ---
+closeBtn.addEventListener('click', () => window.pace.hideWindow());
+pinBtn.addEventListener('click', async () => {
+  const pinned = await window.pace.togglePin();
+  pinBtn.classList.toggle('active', pinned);
+  pinBtn.title = pinned ? '取消置顶' : '置顶';
+});
+settingsBtn.addEventListener('click', () => openModal());
+
+// --- Sidebar populator ---
 async function refreshSidebar() {
   let snap;
   try {
     snap = await window.pace.contextSnapshot({ includeTranscript: false });
   } catch (err) {
-    cwdLabelEl.textContent = `snapshot error: ${err.message}`;
+    pillProjectText.textContent = `snapshot error: ${err.message.slice(0, 32)}`;
     return;
   }
   const { ctx, settings, recent_history } = snap;
 
-  cwdLabelEl.textContent = `cwd: ${ctx._meta.cwd}`;
-
-  // Project
-  if (ctx.git && ctx.git.available) {
-    setDot(projDotEl, 'ok');
-    projRootEl.textContent   = ctx.git.git_root || '—';
-    projBranchEl.textContent = ctx.git.git_branch || '—';
-    projRemoteEl.textContent = ctx.git.git_remote ? truncate(ctx.git.git_remote.replace(/^https:\/\//, ''), 32) : '—';
+  // === PROJECT pill + detail ===
+  const gitOk = !!(ctx.git && ctx.git.available);
+  setDot(pillProjectDot, gitOk ? 'ok' : 'alert');
+  setDot(dProjDot,       gitOk ? 'ok' : 'alert');
+  if (gitOk) {
     const dirty = ctx.git.dirty_count || 0;
-    projDirtyEl.textContent = dirty ? `${dirty} files` : 'clean';
-    projDirtyEl.className = 'v' + (dirty ? ' warn' : ' muted');
+    const root = (ctx.git.git_root || '').split(/[\\/]/).pop() || ctx.git.git_root;
+    pillProjectText.innerHTML = '';
+    pillProjectText.appendChild(document.createTextNode('📂 '));
+    const b = document.createElement('b'); b.textContent = root || '—';
+    pillProjectText.appendChild(b);
+    pillProjectText.appendChild(document.createTextNode(' · ' + (ctx.git.git_branch || '—') + ' · ' + (dirty ? dirty + '↕' : 'clean')));
 
-    projLogEl.innerHTML = '';
+    dProjRoot.textContent   = ctx.git.git_root || '—';
+    dProjBranch.textContent = ctx.git.git_branch || '—';
+    dProjRemote.textContent = ctx.git.git_remote ? truncate(ctx.git.git_remote.replace(/^https?:\/\//, ''), 40) : '—';
+    dProjDirty.textContent  = dirty ? dirty + ' files' : 'clean';
+    dProjDirty.className    = 'v' + (dirty ? ' warn' : ' muted');
+    dProjCwd.textContent    = ctx._meta.cwd;
+    dProjLog.innerHTML = '';
     (ctx.git.recent_log || []).slice(0, 5).forEach((line) => {
       const li = document.createElement('li');
       li.textContent = line;
-      projLogEl.appendChild(li);
+      dProjLog.appendChild(li);
     });
   } else {
-    setDot(projDotEl, 'alert');
-    projRootEl.textContent = '(not a git repo)';
-    projBranchEl.textContent = '—';
-    projRemoteEl.textContent = '—';
-    projDirtyEl.textContent = '—';
-    projLogEl.innerHTML = '';
+    pillProjectText.textContent = '📂 (not a git repo)';
+    dProjRoot.textContent = '—';
+    dProjBranch.textContent = '—';
+    dProjRemote.textContent = '—';
+    dProjDirty.textContent = '—';
+    dProjCwd.textContent = ctx._meta.cwd;
+    dProjLog.innerHTML = '';
   }
 
-  // cc session
+  // === CC SESSION pill + detail ===
   if (ctx.cc_session) {
-    setDot(ccDotEl, 'ok');
-    ccFoundEl.textContent = 'yes';
-    ccFoundEl.className = 'v accent';
-    ccFileEl.textContent = truncate(ctx.cc_session.session_file.split(/[\\/]/).pop(), 28);
-    ccMtimeEl.textContent = timeAgo(ctx.cc_session.last_mtime_ms);
-    ccTurnsEl.textContent = ctx.cc_session.first_record_keys ? `${ctx.cc_session.first_record_keys.length} keys in first record` : '—';
+    setDot(pillCcDot, 'ok');
+    setDot(dCcDot, 'ok');
+    pillCcText.textContent = '🤖 cc · ' + timeAgo(ctx.cc_session.last_mtime_ms) + ' ago';
+    dCcFound.textContent = 'yes';
+    dCcFound.className = 'v accent';
+    dCcFile.textContent  = truncate((ctx.cc_session.session_file || '').split(/[\\/]/).pop(), 30);
+    dCcMtime.textContent = new Date(ctx.cc_session.last_mtime_ms).toLocaleString('zh-CN');
   } else {
-    setDot(ccDotEl, 'warn');
-    ccFoundEl.textContent = 'no';
-    ccFoundEl.className = 'v warn';
-    ccFileEl.textContent = '—';
-    ccMtimeEl.textContent = '—';
-    ccTurnsEl.textContent = '—';
+    setDot(pillCcDot, 'warn');
+    setDot(dCcDot, 'warn');
+    pillCcText.textContent = '🤖 cc · none';
+    dCcFound.textContent = 'no';
+    dCcFound.className = 'v warn';
+    dCcFile.textContent  = '—';
+    dCcMtime.textContent = '—';
   }
 
-  // LLM
+  // === LLM pill + detail + footer ===
   const hasKey = !!settings.has_minimax_config;
-  setDot(llmDotEl, hasKey ? 'ok' : 'warn');
-  llmModelEl.textContent  = settings.minimax_model || '—';
+  setDot(pillLlmDot, hasKey ? 'ok' : 'alert');
+  setDot(dLlmDot,    hasKey ? 'ok' : 'alert');
+  setDot(footerLlmDot, hasKey ? 'ok' : 'alert');
+  const modelShort = (settings.minimax_model || '').replace(/^MiniMax-/, '');
+  pillLlmText.textContent = '🔑 ' + (hasKey ? (modelShort + ' · ' + settings.minimax_api_key_source) : '未配 key');
+  dLlmModel.textContent = settings.minimax_model || '—';
   try {
     const u = new URL(settings.minimax_base_url || '');
-    llmHostEl.textContent = u.host;
-  } catch (_e) {
-    llmHostEl.textContent = settings.minimax_base_url || '—';
-  }
-  llmKeySrcEl.textContent = settings.minimax_api_key_source === 'env'
-    ? 'env'
-    : (settings.minimax_api_key_source === 'config' ? 'config.json' : '(missing)');
-  llmKeySrcEl.className = 'v' + (hasKey ? ' accent' : ' alert');
+    dLlmHost.textContent = u.host;
+  } catch (_e) { dLlmHost.textContent = settings.minimax_base_url || '—'; }
+  dLlmKeysrc.textContent = settings.minimax_api_key_source === 'env' ? 'env' :
+                           (settings.minimax_api_key_source === 'config' ? 'config.json' : '(missing)');
+  dLlmKeysrc.className = 'v' + (hasKey ? ' accent' : ' alert');
 
-  // Recent history
-  historyListEl.innerHTML = '';
+  footerModel.textContent  = settings.minimax_model || '—';
+  footerKeySrc.textContent = hasKey ? settings.minimax_api_key_source : 'no key';
+
+  // === Recent history ===
+  dHistoryList.innerHTML = '';
   if (!recent_history || recent_history.length === 0) {
     const li = document.createElement('li');
     li.style.color = 'var(--text-muted)';
     li.textContent = '(no recent turns)';
-    historyListEl.appendChild(li);
+    dHistoryList.appendChild(li);
   } else {
     recent_history.slice(0, 6).forEach((row) => {
       const li = document.createElement('li');
@@ -171,26 +204,12 @@ async function refreshSidebar() {
       tsEl.textContent = t;
       li.appendChild(tsEl);
       li.appendChild(document.createTextNode(q));
-      historyListEl.appendChild(li);
+      dHistoryList.appendChild(li);
     });
-  }
-
-  // Footer
-  footerModelEl.textContent = settings.minimax_model || '—';
-  footerConfigPathEl.textContent = settings.config_path || '';
-  if (hasKey) {
-    setDot(footerLlmDotEl, 'ok');
-    footerLlmStatusEl.textContent = `MiniMax · ${settings.minimax_api_key_source}`;
-    footerLlmStatusEl.style.color = 'var(--ok)';
-  } else {
-    setDot(footerLlmDotEl, 'warn');
-    footerLlmStatusEl.textContent = '未配 key';
-    footerLlmStatusEl.style.color = 'var(--warn)';
   }
 }
 
-// --- Markdown-lite renderer (XSS-safe DOM API) ---
-
+// --- Markdown-lite renderer (XSS-safe) ---
 function renderInline(parent, text) {
   const re = /(\*\*[^*\n]+?\*\*|`[^`\n]+?`)/g;
   let last = 0; let m;
@@ -198,19 +217,16 @@ function renderInline(parent, text) {
     if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
     const tok = m[0];
     if (tok.startsWith('**')) {
-      const b = document.createElement('strong');
-      b.textContent = tok.slice(2, -2);
+      const b = document.createElement('strong'); b.textContent = tok.slice(2, -2);
       parent.appendChild(b);
     } else {
-      const c = document.createElement('code');
-      c.textContent = tok.slice(1, -1);
+      const c = document.createElement('code'); c.textContent = tok.slice(1, -1);
       parent.appendChild(c);
     }
     last = m.index + tok.length;
   }
   if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
 }
-
 function renderMarkdown(parent, text) {
   parent.innerHTML = '';
   if (!text) return;
@@ -218,11 +234,7 @@ function renderMarkdown(parent, text) {
   for (const block of blocks) {
     const trimmed = block.trim();
     if (!trimmed) continue;
-    if (/^---+$/.test(trimmed)) {
-      parent.appendChild(document.createElement('hr'));
-      continue;
-    }
-    // Headers
+    if (/^---+$/.test(trimmed)) { parent.appendChild(document.createElement('hr')); continue; }
     const hMatch = /^(#{1,3})\s+(.+)$/.exec(trimmed);
     if (hMatch && !trimmed.includes('\n')) {
       const h = document.createElement('h' + hMatch[1].length);
@@ -231,7 +243,6 @@ function renderMarkdown(parent, text) {
       continue;
     }
     const lines = block.split('\n');
-    // Bullet list
     if (lines.every((l) => /^\s*[-*]\s/.test(l) || !l.trim())) {
       const ul = document.createElement('ul');
       for (const l of lines) {
@@ -243,7 +254,6 @@ function renderMarkdown(parent, text) {
       parent.appendChild(ul);
       continue;
     }
-    // Blockquote
     if (lines.every((l) => /^\s*>\s?/.test(l) || !l.trim())) {
       const bq = document.createElement('blockquote');
       const inner = lines.map((l) => l.replace(/^\s*>\s?/, '')).join('\n');
@@ -251,7 +261,6 @@ function renderMarkdown(parent, text) {
       parent.appendChild(bq);
       continue;
     }
-    // Paragraph
     const div = document.createElement('div');
     div.className = 'block';
     lines.forEach((line, i) => {
@@ -263,41 +272,31 @@ function renderMarkdown(parent, text) {
 }
 
 // --- Chat ---
-
 function appendUserMsg(text) {
   const node = document.createElement('div');
   node.className = 'msg user';
   node.textContent = text;
-  const tsEl = document.createElement('span');
-  tsEl.className = 'ts';
-  tsEl.textContent = ts();
+  const tsEl = document.createElement('span'); tsEl.className = 'ts'; tsEl.textContent = ts();
   node.appendChild(tsEl);
   chatEl.appendChild(node);
   chatEl.scrollTop = chatEl.scrollHeight;
 }
-
 function makePendingMentor() {
   const node = document.createElement('div');
   node.className = 'msg mentor';
   const spinner = document.createElement('span');
   spinner.className = 'spinner';
   node.appendChild(spinner);
-  node.appendChild(document.createTextNode('思考中…(MiniMax-M2.7 reasoning，30-60s 常见)'));
+  node.appendChild(document.createTextNode('思考中…(M2.7 reasoning · 30–60s)'));
   chatEl.appendChild(node);
   chatEl.scrollTop = chatEl.scrollHeight;
   return node;
 }
-
 function finalizeMentor(node, text, isError) {
   node.className = 'msg ' + (isError ? 'error' : 'mentor');
-  if (isError) {
-    node.textContent = text;
-  } else {
-    renderMarkdown(node, text);
-  }
-  const tsEl = document.createElement('span');
-  tsEl.className = 'ts';
-  tsEl.textContent = ts();
+  if (isError) node.textContent = text;
+  else renderMarkdown(node, text);
+  const tsEl = document.createElement('span'); tsEl.className = 'ts'; tsEl.textContent = ts();
   node.appendChild(tsEl);
   chatEl.scrollTop = chatEl.scrollHeight;
 }
@@ -314,39 +313,29 @@ async function send() {
     const reply = await window.pace.askMentor({ text });
     const md = (reply && reply.markdown) || '(no reply)';
     finalizeMentor(pending, md, false);
-    if (reply && reply.debug && reply.debug.elapsed_ms) {
-      footerLatencyEl.textContent = `${(reply.debug.elapsed_ms / 1000).toFixed(1)}s`;
-    } else {
-      footerLatencyEl.textContent = `${((Date.now() - t0) / 1000).toFixed(1)}s`;
-    }
+    const elapsed = (reply && reply.debug && reply.debug.elapsed_ms) || (Date.now() - t0);
+    footerLastLatency.textContent = (elapsed / 1000).toFixed(1) + 's';
     window.pace.log('panel', 'mentor_reply', {
       input_length: text.length,
       stage: reply && reply.debug && reply.debug.stage,
-      elapsed_ms: reply && reply.debug && reply.debug.elapsed_ms,
+      elapsed_ms: elapsed,
     });
   } catch (err) {
-    finalizeMentor(pending, `出错：${err && err.message ? err.message : String(err)}`, true);
+    finalizeMentor(pending, '出错：' + (err && err.message ? err.message : String(err)), true);
     window.pace.log('panel', 'mentor_reply_error', { error: String(err) }, 'error');
   } finally {
     sendBtn.disabled = false;
     inputEl.focus();
-    // Refresh sidebar (history list now has +1 entry, dirty count may have changed)
     refreshSidebar();
   }
 }
 
 sendBtn.addEventListener('click', send);
 inputEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    send();
-  }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
-refreshSidebarBtn.addEventListener('click', refreshSidebar);
-
 // --- Settings modal ---
-
 async function loadSettings() {
   try {
     const s = await window.pace.getSettings();
@@ -357,15 +346,15 @@ async function loadSettings() {
     if (s.has_minimax_config) {
       settingsStatusEl.className = 'status-row ok';
       settingsStatusEl.textContent =
-        `✓ MiniMax 已配置 · key 来源 ${s.minimax_api_key_source === 'env' ? '环境变量' : 'config.json'} · model ${s.minimax_model}. ` +
-        `粘贴新 key 会覆盖；留空保存保留现状。`;
+        '✓ MiniMax · key ' + (s.minimax_api_key_source === 'env' ? '环境变量' : 'config.json') +
+        ' · model ' + s.minimax_model + '. 留空 key 保存则保留现状。';
     } else {
       settingsStatusEl.className = 'status-row warn';
-      settingsStatusEl.textContent = '⚠ 还没设置 MiniMax API key — 配上后 mentor 才能回答。';
+      settingsStatusEl.textContent = '⚠ 还没设 API key — 配上后 mentor 才能回答。';
     }
   } catch (err) {
     settingsStatusEl.className = 'status-row warn';
-    settingsStatusEl.textContent = `加载设置出错：${err.message}`;
+    settingsStatusEl.textContent = '加载设置出错：' + err.message;
   }
 }
 
@@ -379,7 +368,6 @@ function closeModal() {
   modalEl.setAttribute('aria-hidden', 'true');
 }
 
-openSettingsBtn.addEventListener('click', openModal);
 closeSettingsBtn.addEventListener('click', closeModal);
 modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(); });
 document.addEventListener('keydown', (e) => {
@@ -399,7 +387,7 @@ saveSettingsBtn.addEventListener('click', async () => {
     const s = await window.pace.saveSettings(patch);
     if (s && s.has_minimax_config) {
       settingsStatusEl.className = 'status-row ok';
-      settingsStatusEl.textContent = `✓ 已保存到 ${s.config_path}`;
+      settingsStatusEl.textContent = '✓ 已保存到 ' + s.config_path;
     } else {
       settingsStatusEl.className = 'status-row warn';
       settingsStatusEl.textContent = '⚠ 保存了但仍缺 API key — mentor 无法回答。';
@@ -408,15 +396,19 @@ saveSettingsBtn.addEventListener('click', async () => {
     refreshSidebar();
   } catch (err) {
     settingsStatusEl.className = 'status-row warn';
-    settingsStatusEl.textContent = `保存出错：${err.message}`;
+    settingsStatusEl.textContent = '保存出错：' + err.message;
   } finally {
     saveSettingsBtn.disabled = false;
   }
 });
 
 // --- Boot ---
-
 window.addEventListener('DOMContentLoaded', async () => {
-  window.pace.log('panel', 'boot', { version: '0.1.0', theme: 'dark-cairn-style' });
+  window.pace.log('panel', 'boot', { version: '0.1.0', form: 'side-dock' });
   await refreshSidebar();
+  // Sync pin button state from main
+  try {
+    const s = await window.pace.windowState();
+    if (s && s.pinned) pinBtn.classList.add('active');
+  } catch (_e) {}
 });
