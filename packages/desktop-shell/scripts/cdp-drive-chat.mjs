@@ -60,11 +60,13 @@ const reply = await session.waitFor(
     const nodes = Array.from(document.querySelectorAll('.msg.mentor'));
     if (!nodes.length) return null;
     const last = nodes[nodes.length - 1];
-    const txt = last.textContent || '';
-    if (/思考中/.test(txt) && txt.length < 30) return null;
+    // Spinner present → still pending
+    if (last.querySelector('.spinner')) return null;
+    const txt = (last.textContent || '').trim();
+    if (txt.length < 50) return null;
     return { text: txt.slice(0, 4000), len: txt.length };
   })()`,
-  120_000
+  150_000
 );
 
 console.log('---- mentor reply text ----');

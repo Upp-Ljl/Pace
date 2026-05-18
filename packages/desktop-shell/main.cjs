@@ -20,6 +20,7 @@ const os = require('os');
 const config = require('./config.cjs');
 const db = require('./db.cjs');
 const mentorPipeline = require('./mentor-pipeline.cjs');
+const ccBridge = require('./cc-bridge.cjs');
 
 let mainWindow = null;
 
@@ -86,6 +87,26 @@ ipcMain.handle('pace:history-list', async (_event, limit) => {
   } catch (err) {
     return { error: err.message };
   }
+});
+
+// --- IPC: context snapshot (for sidebar dashboard) ---
+
+ipcMain.handle('pace:context-snapshot', async (_event, opts) => {
+  const cwd = (opts && typeof opts.cwd === 'string' && opts.cwd) || process.cwd();
+  const includeTranscript = !!(opts && opts.includeTranscript);
+  const t0 = Date.now();
+  const ctx = ccBridge.collect({ cwd, includeTranscript, transcriptN: 8 });
+  const settings = config.getSettings();
+  let recent = [];
+  try {
+    recent = db.listMentorTurns(8);
+  } catch (_e) { /* db unavailable */ }
+  return {
+    elapsed_ms: Date.now() - t0,
+    ctx,
+    settings,
+    recent_history: recent,
+  };
 });
 
 // --- IPC: log ---
