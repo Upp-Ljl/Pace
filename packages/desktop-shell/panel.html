@@ -497,6 +497,18 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+.tm-agent { margin-top: 5px; }
+.tm-agent-chip {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-muted);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
 .tm-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .tm-action-btn {
   -webkit-app-region: no-drag;
@@ -770,7 +782,6 @@ body {
   <nav id="tabs">
     <button class="tab active" data-tab="now">现在 <span class="count" id="now-count"></span></button>
     <button class="tab" data-tab="team">团队</button>
-    <button class="tab" data-tab="identities">身份</button>
     <button class="tab" data-tab="ask">问问</button>
   </nav>
 
@@ -809,15 +820,6 @@ body {
     </div>
   </div>
 
-  <!-- VIEW: IDENTITIES (stub for now — derived from team) -->
-  <div class="view" id="view-identities" hidden>
-    <div class="empty-state">
-      <div class="ico">🪪</div>
-      身份 / agent 目录<br>
-      <span style="opacity: 0.7">类似飞书的人员目录，但每个身份可关联一个 agent。<br>v0.2 实装——每个团队成员可以接一个 agent 化身，你看到 agent 在干啥。</span>
-      <div class="label">v0.2 · 即将上线</div>
-    </div>
-  </div>
 
   <!-- VIEW: ASK -->
   <div class="view" id="view-ask" hidden>
@@ -888,6 +890,11 @@ body {
     <div class="field">
       <label for="member-notes">备注（可选）</label>
       <input id="member-notes" type="text" placeholder="比如：负责后端接口 / 沟通用钉钉 / 倾向直说" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="member-agent">Agent / 身份代号（可选）</label>
+      <input id="member-agent" type="text" placeholder="比如：github:@xiaoting · slack:@tom · minimax-pm-bot" autocomplete="off">
+      <div class="hint">如果这位同事有 agent 化身、外部身份或专属代号，记下来。Pace 在卡片和建议里能 reference 它（比如"找 Tom 的 agent" 而不是只找 Tom）。</div>
     </div>
     <div class="row">
       <button class="secondary" id="member-delete-btn" style="margin-right: auto; display: none">删除</button>

@@ -23,7 +23,6 @@ const cardsSection = document.getElementById('cards-section');
 const commitListEl = document.getElementById('commit-list');
 const commitPaneMetaEl = document.getElementById('commit-pane-meta');
 const teamView     = document.getElementById('view-team');
-const identitiesView = document.getElementById('view-identities');
 const askView      = document.getElementById('view-ask');
 const askHistoryEl = document.getElementById('ask-history');
 const inputBarEl   = document.getElementById('input-bar');
@@ -56,6 +55,7 @@ const memberIdInput    = document.getElementById('member-id');
 const memberNameInput  = document.getElementById('member-name');
 const memberRoleSelect = document.getElementById('member-role');
 const memberNotesInput = document.getElementById('member-notes');
+const memberAgentInput = document.getElementById('member-agent');
 const memberSaveBtn    = document.getElementById('member-save-btn');
 const memberCancelBtn  = document.getElementById('member-cancel-btn');
 const memberDeleteBtn  = document.getElementById('member-delete-btn');
@@ -64,7 +64,6 @@ const raciChecks       = document.querySelectorAll('.raci-check');
 const VIEWS = {
   now: nowView,
   team: teamView,
-  identities: identitiesView,
   ask: askView,
 };
 
@@ -143,7 +142,8 @@ function teamSummary(team) {
   if (!team || !team.length) return null;
   return team.map((m) => {
     const raci = (m.raci || []).join('');
-    return `${m.name}${m.role ? '/' + m.role : ''}${raci ? '(' + raci + ')' : ''}`;
+    const agent = m.agent_id ? ` 〈agent: ${m.agent_id}〉` : '';
+    return `${m.name}${m.role ? '/' + m.role : ''}${raci ? '(' + raci + ')' : ''}${agent}`;
   }).join(', ');
 }
 
@@ -801,6 +801,16 @@ function renderTeam(members) {
     }
     body.appendChild(line1);
 
+    if (m.agent_id) {
+      const agentLine = document.createElement('div');
+      agentLine.className = 'tm-agent';
+      const chip = document.createElement('span');
+      chip.className = 'tm-agent-chip';
+      chip.textContent = '🤖 ' + m.agent_id;
+      agentLine.appendChild(chip);
+      body.appendChild(agentLine);
+    }
+
     if (m.notes) {
       const notes = document.createElement('div');
       notes.className = 'tm-notes';
@@ -861,6 +871,7 @@ function openMemberModal(member) {
     memberNameInput.value = member.name || '';
     memberRoleSelect.value = member.role || '';
     memberNotesInput.value = member.notes || '';
+    memberAgentInput.value = member.agent_id || '';
     setRaci(member.raci || []);
     memberDeleteBtn.style.display = 'inline-block';
   } else {
@@ -869,6 +880,7 @@ function openMemberModal(member) {
     memberNameInput.value = '';
     memberRoleSelect.value = '';
     memberNotesInput.value = '';
+    memberAgentInput.value = '';
     setRaci([]);
     memberDeleteBtn.style.display = 'none';
   }
@@ -894,6 +906,7 @@ memberSaveBtn.addEventListener('click', async () => {
     role: memberRoleSelect.value || null,
     raci: getSelectedRaci(),
     notes: memberNotesInput.value.trim() || null,
+    agent_id: memberAgentInput.value.trim() || null,
   };
   memberSaveBtn.disabled = true;
   try {

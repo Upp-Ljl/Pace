@@ -63,18 +63,25 @@ function applyMigrations() {
   `);
   const cur = db.prepare('SELECT version FROM schema_version WHERE id = 1').get();
   const current = cur ? cur.version : 0;
-  const target = 2;
+  const target = 3;
   if (current >= target) return;
 
   const tx = db.transaction(() => {
     if (current < 1) migrate_001_init();
     if (current < 2) migrate_002_team_members();
+    if (current < 3) migrate_003_agent_id();
     db.prepare(`
       INSERT OR REPLACE INTO schema_version (id, version, applied_at)
       VALUES (1, ?, ?)
     `).run(target, new Date().toISOString());
   });
   tx();
+}
+
+function migrate_003_agent_id() {
+  // Each team member optionally has an agent / external identity handle.
+  // The 身份 tab is merged into team members — each member IS an identity.
+  db.exec(`ALTER TABLE team_members ADD COLUMN agent_id TEXT;`);
 }
 
 function migrate_002_team_members() {
@@ -204,7 +211,7 @@ function getCachedProjectId(cwd) {
 function listTeamMembers(projectId) {
   if (!projectId) return [];
   return openDatabase().prepare(`
-    SELECT id, project_id, name, role, raci_json, notes, created_at, updated_at
+    SELECT id, project_id, name, role, raci_json, notes, agent_id, created_at, updated_at
     FROM team_members WHERE project_id = ? ORDER BY created_at ASC
   `).all(projectId).map((row) => ({
     ...row,
@@ -216,14 +223,15 @@ function addTeamMember(input) {
   const now = new Date().toISOString();
   const raciJson = JSON.stringify(Array.isArray(input.raci) ? input.raci : []);
   const result = openDatabase().prepare(`
-    INSERT INTO team_members (project_id, name, role, raci_json, notes, created_at, updated_at)
-    VALUES (@project_id, @name, @role, @raci_json, @notes, @created_at, @updated_at)
+    INSERT INTO team_members (project_id, name, role, raci_json, notes, agent_id, created_at, updated_at)
+    VALUES (@project_id, @name, @role, @raci_json, @notes, @agent_id, @created_at, @updated_at)
   `).run({
     project_id: input.project_id,
     name: String(input.name || '').trim(),
     role: input.role ? String(input.role).trim() : null,
     raci_json: raciJson,
     notes: input.notes ? String(input.notes).trim() : null,
+    agent_id: input.agent_id ? String(input.agent_id).trim() : null,
     created_at: now,
     updated_at: now,
   });
@@ -238,12 +246,13 @@ function updateTeamMember(id, patch) {
     role:  patch.role  !== undefined ? (patch.role ? String(patch.role).trim() : null) : cur.role,
     raci_json: patch.raci !== undefined ? JSON.stringify(patch.raci) : cur.raci_json,
     notes: patch.notes !== undefined ? (patch.notes ? String(patch.notes).trim() : null) : cur.notes,
+    agent_id: patch.agent_id !== undefined ? (patch.agent_id ? String(patch.agent_id).trim() : null) : cur.agent_id,
     updated_at: new Date().toISOString(),
     id,
   };
   openDatabase().prepare(`
     UPDATE team_members
-    SET name = @name, role = @role, raci_json = @raci_json, notes = @notes, updated_at = @updated_at
+    SET name = @name, role = @role, raci_json = @raci_json, notes = @notes, agent_id = @agent_id, updated_at = @updated_at
     WHERE id = @id
   `).run(next);
   return true;

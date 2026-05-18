@@ -95,16 +95,17 @@ function buildUserBlock(userInput, ctx, team) {
     });
   }
 
-  // Team / 干系人
+  // Team / 干系人 (each member also is an identity that may have an agent)
   if (team && team.length) {
-    parts.push('\n## 当前项目团队（RACI 标注是用户填的：R=负责 A=批准 C=咨询 I=告知）');
+    parts.push('\n## 当前项目团队（RACI 标注：R=负责 A=批准 C=咨询 I=告知）');
     team.forEach((m) => {
       const raci = (m.raci || []).join('');
       const role = m.role ? ` · ${m.role}` : '';
-      const notes = m.notes ? ` · ${m.notes}` : '';
-      parts.push(`- ${m.name}${role}${raci ? ' · RACI: ' + raci : ''}${notes}`);
+      const notes = m.notes ? ` · 备注: ${m.notes}` : '';
+      const agent = m.agent_id ? ` · agent/外部身份: ${m.agent_id}` : '';
+      parts.push(`- ${m.name}${role}${raci ? ' · RACI: ' + raci : ''}${notes}${agent}`);
     });
-    parts.push('\n**建议在回答里点名相关同事**（不要泛泛说"找产品"）。');
+    parts.push('\n**建议在回答里点名相关同事**（不要泛泛说"找产品"）。如有 agent/外部身份字段，可以在话术里 reference（比如 "在 slack:@tom 上同步"）。');
   } else {
     parts.push('\n## 团队：用户还没在 Pace 里登记同事');
   }
