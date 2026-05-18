@@ -171,9 +171,32 @@ Claude 在本仓库工作时必须遵守的规则。
 
 ## 当前阶段（保持更新）
 
-| 阶段 | 内容 | 状态 |
+| 阶段 | 内容 | Commit |
 |---|---|---|
-| Init | git init + PRODUCT.md v0.1 + .gitignore | 已落，`40f879a` (root commit) |
-| CLAUDE.md | Cairn 工作流规则迁移 + Pace 反漂移条款 | 进行中 |
-| ARCHITECTURE.md | 用户面层 + cc 耦合层 + mentor 推断引擎 + cairn-kernel 依赖 | 待 |
-| MVP-0 | "cc 活动 → PMP 阶段识别" demo（验证 cc 耦合 + mentor 推断两条链路打通） | 待 |
+| Init | git init + PRODUCT.md v0.1 + .gitignore | `40f879a` |
+| CLAUDE.md | Cairn 工作流规则迁移 + Pace 反漂移条款 | `8389359` |
+| ARCHITECTURE.md | 全景图 + 复制 cairn desktop-shell 起手策略 + cc-bridge + mentor 推断引擎 | `5b8b98b` |
+| Import 复制 cairn desktop-shell | 53 files / 31507 行 + 第一轮 cleanup（删 mode-a / cockpit / managed-loop / cairn-pet 等） | `64138f6` |
+| Replace cairn UI shell | 写 Pace minimal main/panel/preload (~325 行)；cairn 原版移到 `_reference-from-cairn/`；npm install fix | `72c22d8` |
+| Wire mentor pipeline | db.cjs + config.cjs + cc-bridge.cjs + mentor-pipeline.cjs + 完整 settings UI；Anthropic API 直调 fetch；XSS-safe markdown 渲染 | `e743ece` |
+
+**当前 MVP-0 状态**：电气走完。Pace boots、DB 自动建好、IPC 全通；缺最后一步——用户在设置里粘 Anthropic API key 后跑真实 LLM 调用验证 PMP prompt 输出质量。
+
+**用户验证 path**：
+```
+cd D:\lll\pace\packages\desktop-shell
+npm run start                # 打开 Pace 桌面 app
+# 在 panel 右上角 ⚙ 粘贴 sk-ant-... key 保存
+# 切到一个真实用 cc 的项目目录（或保持当前 cwd），问 "我现在在干啥"
+# 应该看到 PMP 阶段判断 + 下一步建议 + 数据诚实标签
+```
+
+**v0.2 路线**（按依赖排序，未排期）：
+- cairn-kernel MCP stdio 接入（跨进程共享 mentor sessions 到 cairn DB）
+- PMP skills 文件化（从 mentor-pipeline.cjs 硬编 prompt 抽到 ~/.pace/skills/pmp/）
+- 沟通话术 sub-pipeline（贝壳 PPT p93 + p61 + p97 完整实现）
+- 干系人 RACI sub-pipeline（贝壳 PPT p25 + p41）
+- 风险管理 4 策略完整版（PMBOK Ch.11 原文补盲区）
+- OKR / Agile 知识源切换
+- cc Stop hook 安装（opt-in）
+- 历史 mentor session 查看面板
