@@ -225,10 +225,120 @@ async function chatJson(payload, opts) {
   }
 }
 
+/**
+ * Streaming variant — same wire format (OpenAI-compatible) with
+ * stream: true. Caller supplies opts.onChunk({type:'delta', text})
+ * per token chunk. Returns final aggregated result like chatJson.
+ *
+ *   { enabled, ok, model, text, usage }
+ *
+ * Stream cancellation: pass opts.signal (AbortSignal). Used together
+ * with timeoutMs.
+ */
+async function chatStream(payload, opts) {
+  const o = opts || {};
+  const provider = o.provider || loadProvider({ keysFile: o.keysFile });
+  if (!provider.enabled) {
+    return { enabled: false, ok: false, error_code: provider.reason || 'disabled' };
+  }
+  const fetchImpl = o.fetchImpl || (typeof fetch === 'function' ? fetch : null);
+  if (!fetchImpl) {
+    return { enabled: true, ok: false, model: provider.model, error_code: 'no_fetch' };
+  }
+  const timeoutMs = Number.isFinite(o.timeoutMs) ? o.timeoutMs : 90_000;
+  const ac = new AbortController();
+  if (o.signal) {
+    if (o.signal.aborted) ac.abort();
+    o.signal.addEventListener('abort', () => ac.abort());
+  }
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+
+  let url = provider.baseUrl;
+  if (!/\/chat\/completions(\?|$)/.test(url)) {
+    url = url.replace(/\/+$/, '') + '/chat/completions';
+  }
+  const body = {
+    model: provider.model,
+    messages: payload.messages,
+    temperature: payload.temperature != null ? payload.temperature : 0.2,
+    stream: true,
+  };
+  if (Number.isFinite(payload.max_tokens)) body.max_tokens = payload.max_tokens;
+  if (payload.response_format) body.response_format = payload.response_format;
+
+  try {
+    const resp = await fetchImpl(url, {
+      method: 'POST',
+      signal: ac.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + provider._apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      return {
+        enabled: true, ok: false, model: provider.model,
+        error_code: 'http_' + resp.status,
+      };
+    }
+    if (!resp.body || typeof resp.body.getReader !== 'function') {
+      return { enabled: true, ok: false, model: provider.model, error_code: 'no_stream' };
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let lineBuffer = '';
+    let accumulated = '';
+    let usage = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      lineBuffer += decoder.decode(value, { stream: true });
+      // Split by newline (SSE event terminator is \n\n but events are line-based)
+      const lines = lineBuffer.split('\n');
+      lineBuffer = lines.pop() || '';
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const j = JSON.parse(data);
+          const delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+          if (typeof delta === 'string' && delta.length) {
+            accumulated += delta;
+            if (o.onChunk) {
+              try { o.onChunk({ type: 'delta', text: delta }); } catch (_e) {}
+            }
+          }
+          if (j.usage) usage = j.usage;
+        } catch (_e) { /* skip malformed line */ }
+      }
+    }
+
+    return {
+      enabled: true, ok: true, model: provider.model,
+      text: accumulated, usage,
+    };
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      return { enabled: true, ok: false, model: provider.model, error_code: 'timeout' };
+    }
+    return { enabled: true, ok: false, model: provider.model, error_code: 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 module.exports = {
   parseEnvFile,
   loadProvider,
   describeProvider,
   chatJson,
+  chatStream,
   DEFAULT_TIMEOUT_MS,
 };

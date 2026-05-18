@@ -153,6 +153,30 @@ ipcMain.handle('pace:mentor-ask', async (_event, input) => {
   }
 });
 
+// Streaming variant — emits 'pace:stream-chunk' events to the sender
+// keyed by stream_id, and returns final result on completion.
+ipcMain.handle('pace:mentor-ask-stream', async (event, input) => {
+  const text = (input && typeof input.text === 'string') ? input.text.trim() : '';
+  const streamId = (input && input.stream_id) || `stream-${Date.now()}`;
+  if (!text) {
+    const md = '请先输入一句你想问的话。';
+    event.sender.send('pace:stream-chunk', { stream_id: streamId, chunk: { type: 'error', code: 'empty_input', markdown: md } });
+    return { markdown: md, debug: { stage: 'reject', reason: 'empty_input' } };
+  }
+  const cwd = (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
+  try {
+    return await mentorPipeline.runMentorTurnStream(text, { cwd }, (chunk) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('pace:stream-chunk', { stream_id: streamId, chunk });
+      }
+    });
+  } catch (err) {
+    const md = `⚠️ **mentor pipeline 异常**\n\n\`${err.message}\``;
+    event.sender.send('pace:stream-chunk', { stream_id: streamId, chunk: { type: 'error', code: 'pipeline_error', markdown: md } });
+    return { markdown: md, debug: { stage: 'pipeline_error', error: err.message } };
+  }
+});
+
 // --- IPC: settings ---
 
 ipcMain.handle('pace:settings-get', async () => config.getSettings());

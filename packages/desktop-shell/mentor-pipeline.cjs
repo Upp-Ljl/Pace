@@ -245,7 +245,199 @@ function stripThinkBlocks(text) {
     .trim();
 }
 
+/**
+ * Streaming variant of runMentorTurn.
+ *
+ * onChunk fires with one of:
+ *   { type: 'thinking', text }    — chars inside <think>...</think>
+ *   { type: 'answer',   text }    — chars after </think>
+ *   { type: 'done',     final, debug }
+ *   { type: 'error',    code, markdown, debug }
+ *
+ * Returns the same final shape as runMentorTurn.
+ */
+async function runMentorTurnStream(userInput, opts, onChunk) {
+  const safeEmit = (chunk) => { try { onChunk && onChunk(chunk); } catch (_e) {} };
+  const o = opts || {};
+  const cwd = o.cwd || process.cwd();
+  const turnId = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+
+  const provider = config.getMinimaxProvider();
+  if (!provider.enabled) {
+    const md = errorMarkdown(provider.reason);
+    safeEmit({ type: 'error', code: provider.reason, markdown: md });
+    return {
+      turn_id: turnId,
+      markdown: md,
+      debug: { stage: 'no_provider', reason: provider.reason },
+    };
+  }
+
+  const ctx = ccBridge.collect({
+    cwd,
+    includeTranscript: true,
+    transcriptN: 8,
+  });
+
+  let team = [];
+  try {
+    const projectId = (ctx.git && ctx.git.git_root) || cwd;
+    team = db.listTeamMembers(projectId);
+  } catch (_e) { /* ignore */ }
+
+  const userBlock = buildUserBlock(userInput, ctx, team);
+
+  // <think> parser state machine
+  let state = 'pre_think'; // 'pre_think' | 'in_think' | 'answer'
+  let pending = '';
+  let thinkingAccum = '';
+  let answerAccum = '';
+  const TAG_OPEN  = '<think>';
+  const TAG_CLOSE = '</think>';
+  const MAX_PARTIAL_TAG = Math.max(TAG_OPEN.length, TAG_CLOSE.length);
+
+  function consumePending() {
+    // Advance state machine through pending buffer, emit cleaned chunks.
+    while (pending.length) {
+      if (state === 'pre_think') {
+        const idx = pending.indexOf(TAG_OPEN);
+        if (idx >= 0) {
+          // discard anything before <think> (usually empty)
+          pending = pending.slice(idx + TAG_OPEN.length);
+          state = 'in_think';
+          continue;
+        }
+        // No opening tag yet. If buffer is large and no tag found,
+        // assume the model didn't emit a thinking block — treat as answer.
+        if (pending.length > 256) {
+          state = 'answer';
+          continue;
+        }
+        // Wait for more bytes
+        return;
+      }
+      if (state === 'in_think') {
+        const idx = pending.indexOf(TAG_CLOSE);
+        if (idx >= 0) {
+          const piece = pending.slice(0, idx);
+          if (piece) {
+            thinkingAccum += piece;
+            safeEmit({ type: 'thinking', text: piece });
+          }
+          pending = pending.slice(idx + TAG_CLOSE.length);
+          state = 'answer';
+          continue;
+        }
+        // Emit all but last MAX_PARTIAL_TAG-1 bytes (might contain partial </think>)
+        if (pending.length > MAX_PARTIAL_TAG) {
+          const safe = pending.slice(0, pending.length - (MAX_PARTIAL_TAG - 1));
+          thinkingAccum += safe;
+          safeEmit({ type: 'thinking', text: safe });
+          pending = pending.slice(safe.length);
+        }
+        return;
+      }
+      if (state === 'answer') {
+        // Emit everything immediately
+        answerAccum += pending;
+        safeEmit({ type: 'answer', text: pending });
+        pending = '';
+        return;
+      }
+    }
+  }
+
+  const t0 = Date.now();
+  const resp = await llmClient.chatStream(
+    {
+      messages: [
+        { role: 'system', content: PMP_SYSTEM_PROMPT },
+        { role: 'user', content: userBlock },
+      ],
+      temperature: 0.3,
+      max_tokens: 4096,
+    },
+    {
+      provider,
+      timeoutMs: 120_000,
+      signal: o.signal,
+      onChunk: ({ type, text }) => {
+        if (type !== 'delta') return;
+        pending += text;
+        consumePending();
+      },
+    }
+  );
+  const elapsed = Date.now() - t0;
+
+  // Flush any remaining pending content
+  if (pending.length) {
+    if (state === 'in_think') {
+      thinkingAccum += pending;
+      safeEmit({ type: 'thinking', text: pending });
+    } else {
+      answerAccum += pending;
+      safeEmit({ type: 'answer', text: pending });
+    }
+    pending = '';
+  }
+
+  if (!resp.ok) {
+    const md = errorMarkdown(resp.error_code, resp.model);
+    const debug = {
+      stage: 'llm_error',
+      error_code: resp.error_code,
+      model: resp.model,
+      elapsed_ms: elapsed,
+      ctx_meta: ctx._meta,
+    };
+    safeEmit({ type: 'error', code: resp.error_code, markdown: md, debug });
+    return { turn_id: turnId, markdown: md, debug };
+  }
+
+  // Strip any stray <think> blocks just in case (shouldn't happen post-parser)
+  const finalAnswer = answerAccum.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  const debug = {
+    stage: 'ok',
+    model: resp.model,
+    elapsed_ms: elapsed,
+    ctx_meta: ctx._meta,
+    git_available: !!(ctx.git && ctx.git.available),
+    cc_session_found: !!ctx.cc_session,
+    transcript_count: (ctx.transcript || []).length,
+    team_size: team.length,
+    api_key_source:  provider._source.api_key,
+    base_url_source: provider._source.base_url,
+    model_source:    provider._source.model,
+    thinking_chars: thinkingAccum.length,
+    answer_chars:   finalAnswer.length,
+    streamed: true,
+  };
+
+  try {
+    db.logMentorTurn({
+      turn_id: turnId,
+      created_at: createdAt,
+      project_id: (ctx.git && ctx.git.git_root) || null,
+      cwd,
+      user_input: userInput,
+      mentor_reply: finalAnswer,
+      debug,
+      llm_model: resp.model,
+      latency_ms: elapsed,
+    });
+  } catch (dbErr) {
+    debug.db_persist_error = dbErr.message;
+  }
+
+  safeEmit({ type: 'done', final: finalAnswer, debug });
+  return { turn_id: turnId, markdown: finalAnswer, debug };
+}
+
 module.exports = {
   runMentorTurn,
+  runMentorTurnStream,
   PMP_SYSTEM_PROMPT,
 };

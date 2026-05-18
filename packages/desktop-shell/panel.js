@@ -24,6 +24,10 @@ const commitListEl = document.getElementById('commit-list');
 const commitPaneMetaEl = document.getElementById('commit-pane-meta');
 const commitDigestEl = document.getElementById('commit-digest');
 const commitToggleBtn = document.getElementById('commit-toggle');
+
+const footerStatus = document.getElementById('footer-status');
+const footerLastLatency = document.getElementById('footer-last-latency');
+const footerLlmDot = document.getElementById('footer-llm-dot');
 const teamView     = document.getElementById('view-team');
 const askView      = document.getElementById('view-ask');
 const askHistoryEl = document.getElementById('ask-history');
@@ -652,13 +656,13 @@ async function expandCard(cardEl, card, linkEl) {
   linkEl.disabled = true;
   linkEl.classList.add('loading');
   linkEl.textContent = '在想…';
+  // Create inline streaming target inside the card
+  const replyWrap = document.createElement('div');
+  replyWrap.className = 'card-reply';
+  cardEl.appendChild(replyWrap);
+  cardEl.classList.add('expanded');
   try {
-    const reply = await window.pace.askMentor({ text: card.seed });
-    const replyEl = document.createElement('div');
-    replyEl.className = 'card-reply';
-    renderMarkdown(replyEl, (reply && reply.markdown) || '(没回复)');
-    cardEl.appendChild(replyEl);
-    cardEl.classList.add('expanded');
+    const reply = await streamMentorInto(replyWrap, card.seed, {});
     linkEl.classList.remove('loading');
     linkEl.textContent = '已展开';
     linkEl.disabled = true;
@@ -736,28 +740,139 @@ function renderMarkdown(parent, text) {
 // --- Ask flow (used in #view-ask) ---
 function appendUserMsg(text) {
   const node = document.createElement('div');
-  node.className = 'msg user';
+  node.className = 'msg user fade-in-up';
   node.textContent = text;
   const tsEl = document.createElement('span'); tsEl.className = 'ts'; tsEl.textContent = tsLabel();
   node.appendChild(tsEl);
   askHistoryEl.appendChild(node);
   askView.scrollTop = askView.scrollHeight;
 }
-function makePendingMentor() {
-  const node = document.createElement('div');
-  node.className = 'msg mentor';
-  node.textContent = '思考中…（30–60 秒）';
-  askHistoryEl.appendChild(node);
-  askView.scrollTop = askView.scrollHeight;
-  return node;
+
+/**
+ * Build an empty mentor bubble pre-wired for streaming. Returns
+ * the elements that need to be filled in as chunks arrive.
+ */
+function makeStreamingMentor(parent) {
+  const root = document.createElement('div');
+  root.className = 'msg mentor streaming fade-in-up';
+
+  const thinking = document.createElement('div');
+  thinking.className = 'msg-thinking';
+  thinking.hidden = true; // shown when first 'thinking' chunk arrives
+  const thinkHead = document.createElement('div');
+  thinkHead.className = 'thinking-head';
+  const brainEl = document.createElement('span');
+  brainEl.className = 'thinking-brain';
+  brainEl.textContent = '🧠';
+  thinkHead.appendChild(brainEl);
+  const thinkLabel = document.createElement('span');
+  thinkLabel.className = 'thinking-label';
+  thinkLabel.textContent = '推理中';
+  thinkHead.appendChild(thinkLabel);
+  const thinkMeta = document.createElement('span');
+  thinkMeta.className = 'thinking-meta';
+  thinkHead.appendChild(thinkMeta);
+  thinking.appendChild(thinkHead);
+  const thinkBody = document.createElement('div');
+  thinkBody.className = 'thinking-body';
+  thinking.appendChild(thinkBody);
+  root.appendChild(thinking);
+
+  const answer = document.createElement('div');
+  answer.className = 'msg-answer-stream';
+  // Empty until first 'answer' chunk; show a typing-cursor placeholder
+  const cursor = document.createElement('span');
+  cursor.className = 'typing-cursor';
+  answer.appendChild(cursor);
+  root.appendChild(answer);
+
+  parent.appendChild(root);
+  return { root, thinking, thinkHead, thinkLabel, thinkMeta, thinkBody, answer, cursor };
 }
-function finalizeMentor(node, text, isError) {
-  node.className = 'msg ' + (isError ? 'error' : 'mentor');
-  if (isError) node.textContent = text;
-  else renderMarkdown(node, text);
-  const tsEl = document.createElement('span'); tsEl.className = 'ts'; tsEl.textContent = tsLabel();
-  node.appendChild(tsEl);
-  askView.scrollTop = askView.scrollHeight;
+
+/**
+ * Stream a mentor turn into the given `target` parent element.
+ * `useMarkdown` controls whether final answer is rendered as markdown
+ * (true for chat history; cards may also use markdown).
+ */
+async function streamMentorInto(parent, text, opts) {
+  const t0 = Date.now();
+  const ui = makeStreamingMentor(parent);
+  const ctx = parent === askHistoryEl ? askView : null;
+  if (ctx) ctx.scrollTop = ctx.scrollHeight;
+
+  let thinkingChars = 0;
+  let answerText = '';
+  let firstAnswerSeen = false;
+
+  const onChunk = (chunk) => {
+    if (chunk.type === 'thinking') {
+      if (ui.thinking.hidden) ui.thinking.hidden = false;
+      thinkingChars += chunk.text.length;
+      ui.thinkBody.appendChild(document.createTextNode(chunk.text));
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      ui.thinkMeta.textContent = ` · ${thinkingChars} 字 · ${elapsed}s`;
+      // Auto-scroll thinking body
+      ui.thinkBody.scrollTop = ui.thinkBody.scrollHeight;
+      if (ctx) ctx.scrollTop = ctx.scrollHeight;
+    } else if (chunk.type === 'answer') {
+      if (!firstAnswerSeen) {
+        firstAnswerSeen = true;
+        // Lock thinking summary
+        ui.thinkLabel.textContent = '推理完成';
+        ui.thinking.classList.add('done');
+        // Remove typing placeholder cursor and start text node
+        ui.cursor.classList.add('blinking');
+      }
+      answerText += chunk.text;
+      // Insert text before the cursor element
+      ui.answer.insertBefore(document.createTextNode(chunk.text), ui.cursor);
+      if (ctx) ctx.scrollTop = ctx.scrollHeight;
+    } else if (chunk.type === 'done') {
+      // Replace the stream-rendered text with proper markdown
+      const finalText = chunk.final || answerText;
+      if (ui.cursor.parentNode) ui.cursor.parentNode.removeChild(ui.cursor);
+      const md = document.createElement('div');
+      md.className = 'msg-answer';
+      renderMarkdown(md, finalText);
+      // Replace the answer container's content
+      ui.answer.innerHTML = '';
+      // Move rendered nodes into ui.answer
+      while (md.firstChild) ui.answer.appendChild(md.firstChild);
+      ui.answer.classList.add('done');
+      // Final thinking meta
+      if (thinkingChars > 0) {
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        ui.thinkMeta.textContent = ` · ${thinkingChars} 字 · ${elapsed}s`;
+        ui.thinking.classList.add('collapsed');
+        ui.thinkHead.style.cursor = 'pointer';
+        ui.thinkHead.addEventListener('click', () => {
+          ui.thinking.classList.toggle('collapsed');
+        });
+      } else {
+        ui.thinking.hidden = true;
+      }
+      ui.root.classList.remove('streaming');
+      ui.root.classList.add('finished');
+      // Timestamp
+      const tsEl = document.createElement('span'); tsEl.className = 'ts'; tsEl.textContent = tsLabel();
+      ui.root.appendChild(tsEl);
+      if (ctx) ctx.scrollTop = ctx.scrollHeight;
+    } else if (chunk.type === 'error') {
+      ui.root.className = 'msg error fade-in-up';
+      ui.root.innerHTML = '';
+      ui.root.textContent = chunk.markdown || '出错了';
+    }
+  };
+
+  try {
+    return await window.pace.streamMentorAsk({ text, ...(opts || {}) }, onChunk);
+  } catch (err) {
+    ui.root.className = 'msg error fade-in-up';
+    ui.root.innerHTML = '';
+    ui.root.textContent = '出错：' + (err && err.message ? err.message : String(err));
+    return null;
+  }
 }
 
 async function send() {
@@ -766,12 +881,17 @@ async function send() {
   sendBtn.disabled = true;
   inputEl.value = '';
   appendUserMsg(text);
-  const pending = makePendingMentor();
+  if (footerStatus) footerStatus.textContent = '思考中…';
   try {
-    const reply = await window.pace.askMentor({ text });
-    finalizeMentor(pending, (reply && reply.markdown) || '(no reply)', false);
+    const r = await streamMentorInto(askHistoryEl, text, {});
+    if (r && r.debug && r.debug.elapsed_ms && footerLastLatency) {
+      footerLastLatency.textContent = (r.debug.elapsed_ms / 1000).toFixed(1) + 's';
+    }
+    if (footerStatus) footerStatus.textContent = '就绪';
+    window.pace.log('panel', 'mentor_reply', { input_length: text.length, stage: r && r.debug && r.debug.stage });
   } catch (err) {
-    finalizeMentor(pending, '出错：' + (err && err.message ? err.message : String(err)), true);
+    if (footerStatus) footerStatus.textContent = '出错';
+    window.pace.log('panel', 'mentor_reply_error', { error: String(err) }, 'error');
   } finally {
     sendBtn.disabled = false;
     inputEl.focus();
