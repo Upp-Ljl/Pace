@@ -1,0 +1,3266 @@
+'use strict';
+
+/**
+ * Cairn desktop-shell — Electron main process.
+ *
+ * Responsibilities:
+ *   - app lifecycle (whenReady / window-all-closed / activate)
+ *   - SQLite read-only handle management + DB path switching
+ *   - window creation: pet (preview.html), panel (panel.html), legacy (inspector-legacy.html)
+ *   - IPC routing: panel + legacy + pet drag handlers
+ *   - mutation gating via CAIRN_DESKTOP_ENABLE_MUTATIONS env flag
+ *
+ * SQL lives in queries.cjs. Keep this file Electron-only.
+ *
+ * Per PRODUCT.md v3 §12 D9: default state is strictly read-only. The one
+ * mutation path (resolveConflict, kept for dogfood-live-pet-demo.mjs
+ * compatibility) is gated on CAIRN_DESKTOP_ENABLE_MUTATIONS=1.
+ */
+
+const { app, BrowserWindow, ipcMain, screen, dialog, Menu, Tray, nativeImage, clipboard } = require('electron');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const { execFileSync } = require('child_process');
+
+/**
+ * Resolve `dir` to its git toplevel if `dir` is inside a git work tree.
+ * Mirrors mcp-server's workspace canonicalization (sha1(host:topLevel))
+ * so a project_root saved by desktop-shell yields the same SESSION_AGENT_ID
+ * mcp-server will compute when run from the same directory. Returns the
+ * input unchanged on any error or timeout (1s).
+ */
+function canonicalizeToGitToplevel(dir) {
+  if (!dir || typeof dir !== 'string') return dir;
+  try {
+    const out = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: dir,
+      timeout: 1000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+      encoding: 'utf8',
+    });
+    const top = (out || '').trim();
+    if (top) return path.normalize(top);
+  } catch (_e) { /* not a git repo, git missing, or timeout — fall through */
+    cairnLog.warn('main', 'git_toplevel_resolve_failed', { message: (_e && _e.message) || String(_e) });
+  }
+  return dir;
+}
+
+const queries = require('./queries.cjs');
+const registry = require('./registry.cjs');
+const cairnLog = require('./cairn-log.cjs');
+const projectQueries = require('./project-queries.cjs');
+const cockpitState = require('./cockpit-state.cjs');
+const cockpitSteer = require('./cockpit-steer.cjs');
+const cockpitRewind = require('./cockpit-rewind.cjs');
+const cockpitDispatch = require('./cockpit-dispatch.cjs');
+const cockpitLane = require('./cockpit-lane.cjs');
+const mentorPolicy = require('./mentor-policy.cjs');
+const llmHelpers = require('./cockpit-llm-helpers.cjs');
+const mentorTick = require('./mentor-tick.cjs');
+const modeAScout = require('./mode-a-scout.cjs');
+const modeALoop  = require('./mode-a-loop.cjs');
+const claudeSessionScan = require('./agent-adapters/claude-code-session-scan.cjs');
+const codexSessionScan  = require('./agent-adapters/codex-session-log-scan.cjs');
+const agentActivity     = require('./agent-activity.cjs');
+const goalSignals       = require('./goal-signals.cjs');
+const goalInterpretation = require('./goal-interpretation.cjs');
+const llmClient         = require('./llm-client.cjs');
+const workerReports     = require('./worker-reports.cjs');
+const prePrGate         = require('./pre-pr-gate.cjs');
+const goalLoopPromptPack = require('./goal-loop-prompt-pack.cjs');
+const recoverySummary    = require('./recovery-summary.cjs');
+const coordinationSignals = require('./coordination-signals.cjs');
+const managedLoopHandlers = require('./managed-loop-handlers.cjs');
+const mentorHandler = require('./mentor-handler.cjs');
+const mentorCollect = require('./mentor-collect.cjs');
+const mentorProjectProfile = require('./mentor-project-profile.cjs');
+// Bootstrap (Phase 1, 2026-05-14): install-bridge spawns `cairn install`
+// in --json mode; cairn-md-drafter produces a haiku-fallback CAIRN.md so
+// the panel's "＋ Add project" is one click end-to-end.
+const installBridge   = require('./install-bridge.cjs');
+const cairnMdDrafter  = require('./cairn-md-drafter.cjs');
+const skillsLoader    = require('./skills-loader.cjs');
+
+// ---------------------------------------------------------------------------
+// Tray icon assets (base64 PNG, 16x16, 1px border + solid fill)
+// ---------------------------------------------------------------------------
+//
+// Pre-generated at source-time with a one-shot Node helper (zlib + Buffer
+// builtins, no third-party dep). Embedded as base64 string constants so:
+//   - no binary files in the repo
+//   - no runtime canvas / spritesheet / webp dependency
+//   - no native ICO toolchain required for a 3-state Quick Slice tray
+// Three distinct colors carry the state signal:
+//   idle  = gray   #505050 / dark-gray border
+//   warn  = amber  #DCB432 / dark-amber border
+//   alert = red    #C83232 / dark-red border
+// macOS users may need a hi-dpi/ICO upgrade later; that's Hardening (R13).
+const TRAY_ICON_IDLE  = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAIUlEQVR4nGPQ0ND4TwlmABEBAQFk4VEDRg0YNYDaBlCCAX390vApagYAAAAAAElFTkSuQmCC';
+const TRAY_ICON_WARN  = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAIklEQVR4nGPIi5L8TwlmABF3thiRhUcNGDVg1ABqG0AJBgAaCYxjVG9cowAAAABJRU5ErkJggg==';
+const TRAY_ICON_ALERT = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAIklEQVR4nGOoEBH5TwlmABEnjIzIwqMGjBowagC1DaAEAwCFDApPXv1bjAAAAABJRU5ErkJggg==';
+
+const TRAY_IMAGES = {
+  idle:  nativeImage.createFromDataURL('data:image/png;base64,' + TRAY_ICON_IDLE),
+  warn:  nativeImage.createFromDataURL('data:image/png;base64,' + TRAY_ICON_WARN),
+  alert: nativeImage.createFromDataURL('data:image/png;base64,' + TRAY_ICON_ALERT),
+};
+
+// ---------------------------------------------------------------------------
+// Config + flags
+// ---------------------------------------------------------------------------
+//
+// Project-Aware Live Panel: persistent state lives in the project
+// registry (`~/.cairn/projects.json`, owned by registry.cjs).
+// The Quick-Slice-era `~/.cairn/desktop-shell.json` is read once at
+// boot for migration (registry.bootstrapInitialRegistry) and never
+// written by this build — keeping it in place lets users downgrade.
+
+const MUTATIONS_ENABLED = process.env.CAIRN_DESKTOP_ENABLE_MUTATIONS === '1';
+if (MUTATIONS_ENABLED) {
+  // eslint-disable-next-line no-console
+  console.warn('⚠ desktop mutations enabled (CAIRN_DESKTOP_ENABLE_MUTATIONS=1) — dev only');
+}
+
+const argv = process.argv.slice(1); // [0] is the executable / .
+const LEGACY_MODE = argv.includes('--legacy');
+
+// ---------------------------------------------------------------------------
+// SQLite connection state — multi-DB (one read handle per unique db_path)
+// ---------------------------------------------------------------------------
+//
+// Project-Aware Live Panel rule (plan §3.1):
+//   - identity is project_root, NOT db_path
+//   - multiple projects may share the same db_path
+//   - desktop-shell is the only writer to ~/.cairn/projects.json;
+//     it never writes to the SQLite DB
+//
+// State:
+//   reg            : current registry (loaded at boot, mutated via IPC)
+//   dbHandles      : Map<dbPath, { db, tables }> — one read handle per
+//                    unique db_path, shared by every project pointing at it
+//   selectedProjectId : the project currently shown in L2 (null = L1
+//                       projects-list view; also the default boot state)
+//
+// Legacy + Quick-Slice IPC handlers (getState, getProjectSummary,
+// queryRunLogEvents, etc.) read from the *active* db handle, which
+// follows selectedProjectId. When no project is selected, they fall
+// back to the default DB path so the pet sprite + legacy Inspector
+// keep working.
+
+/** @type {{ version: number, projects: registry.ProjectRegistryEntry[] }} */
+let reg = { version: registry.REGISTRY_VERSION, projects: [] };
+
+/** @type {Map<string, { db: any, tables: Set<string> }>} */
+const dbHandles = new Map();
+
+/** @type {Map<string, any>} writeDb handles (mutation flag only) */
+const writeHandles = new Map();
+
+/** @type {string|null} */
+let selectedProjectId = null;
+
+function openReadDb(p) {
+  const Database = require('better-sqlite3');
+  return new Database(p, { readonly: true, fileMustExist: true });
+}
+
+function openWriteDb(p) {
+  if (writeHandles.has(p)) return writeHandles.get(p);
+  const Database = require('better-sqlite3');
+  const handle = new Database(p, { fileMustExist: true });
+  writeHandles.set(p, handle);
+  return handle;
+}
+
+/** Ensure WAL mode for a db file (idempotent). */
+function ensureWalMode(p) {
+  try {
+    const Database = require('better-sqlite3');
+    const init = new Database(p);
+    init.pragma('journal_mode = WAL');
+    init.close();
+  } catch (_e) { /* mcp-server will WAL-init on its own write */
+    cairnLog.warn('main', 'wal_mode_init_failed', { message: (_e && _e.message) || String(_e) });
+  }
+}
+
+/**
+ * Make sure a read handle exists for `p`. Returns the handle entry, or
+ * null if the file is missing / unreadable.
+ *
+ * **Sentinel fallback** (2026-05-14): Some legacy registry entries carry
+ * `db_path = '/dev/null'` or `'(unknown)'` from earlier dogfood scripts.
+ * On Windows, `/dev/null` is not a real path, so `fs.existsSync` returns
+ * false and the handle was previously null. That caused panel L0 cards
+ * to render with `summary: null` (no status light, no session count)
+ * for legacy projects even when the host-level cairn.db had real data.
+ *
+ * Two callers (`get-cockpit-state`, `get-project-summary`) inlined this
+ * fallback; the rest (incl. `getProjectsList`) did not — producing the
+ * exact "panel doesn't see new session in 试验场" bug 鸭总 reported.
+ * Centralizing the fallback HERE makes all 15 callers benefit at once.
+ */
+const DB_PATH_SENTINELS = new Set(['/dev/null', '(unknown)']);
+function ensureDbHandle(p) {
+  if (!p || DB_PATH_SENTINELS.has(p)) {
+    p = registry.DEFAULT_DB_PATH;
+  }
+  if (dbHandles.has(p)) return dbHandles.get(p);
+  if (!fs.existsSync(p)) {
+    // eslint-disable-next-line no-console
+    console.log(`cairn: db not found at ${p}`);
+    return null;
+  }
+  ensureWalMode(p);
+  try {
+    const handle = openReadDb(p);
+    const entry = { db: handle, tables: queries.getTables(handle) };
+    dbHandles.set(p, entry);
+    // eslint-disable-next-line no-console
+    console.log(`cairn: db connected ${p} (${entry.tables.size} tables)`);
+    return entry;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(`cairn: db open failed: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Same as ensureDbHandle but returns a WRITABLE handle. Used by
+ * mentor-tick (and Mode A/B writes generally) — readonly mode
+ * blocks ALL of: mode-a-loop's plan persistence, mode-b-suggester's
+ * mentor_todo writes, mode-a-auto-answer's blocker updates,
+ * mentor-policy's nudge/escalation writes. None of these are panel
+ * mutations (which D9 governs); they're Mentor-tier kernel writes
+ * already allowed by D9.1 Tier-A. Caller MUST be a Mentor-tier path,
+ * not a panel render path.
+ *
+ * 2026-05-14 fix: pre-this commit mentor-tick was wired to
+ * ensureDbHandle directly, getting a readonly handle → every tick
+ * crashed with "attempt to write a readonly database". Now mentor-tick
+ * is wired to ensureWritableDbHandle, panel renders keep using the
+ * readonly ensureDbHandle.
+ */
+const writableDbHandles = new Map();
+function ensureWritableDbHandle(p) {
+  if (!p || DB_PATH_SENTINELS.has(p)) {
+    p = registry.DEFAULT_DB_PATH;
+  }
+  if (writableDbHandles.has(p)) return writableDbHandles.get(p);
+  if (!fs.existsSync(p)) {
+    return null;
+  }
+  ensureWalMode(p);
+  try {
+    const handle = openWriteDb(p);
+    const entry = { db: handle, tables: queries.getTables(handle) };
+    writableDbHandles.set(p, entry);
+    // eslint-disable-next-line no-console
+    console.log(`cairn: db connected (writable, mentor-tick) ${p}`);
+    return entry;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(`cairn: writable db open failed: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * 2026-05-14 Mode A auto-ship probe. Idempotent; safe to call any number
+ * of times. Mutates module-level `reg` + persists via saveRegistry.
+ *
+ * Skips work when cockpit_settings.auto_ship is already set (preserves
+ * user's enabled/disabled choice). Called from both add-project and
+ * get-cockpit-settings (the latter backfills legacy projects).
+ */
+function _probeAutoShip(projectRoot, projectId) {
+  try {
+    const existing = registry.getCockpitSettings(reg, projectId);
+    if (existing && existing.auto_ship && typeof existing.auto_ship.enabled !== 'undefined' && existing.auto_ship.remote_url !== null) {
+      // Already probed — don't overwrite (user may have toggled enabled).
+      return;
+    }
+    const autoShip = {
+      enabled: (existing && existing.auto_ship && existing.auto_ship.enabled) || false,
+      remote_url: null,
+      default_branch: 'main',
+      pat_path: null,
+    };
+    try {
+      const r = execFileSync('git', ['-C', projectRoot, 'remote', 'get-url', 'origin'], {
+        encoding: 'utf8', timeout: 2000, windowsHide: true,
+      }).trim();
+      if (r) autoShip.remote_url = r;
+    } catch (_e) { /* no remote */
+      cairnLog.warn('main', 'auto_ship_remote_probe_failed', { message: (_e && _e.message) || String(_e) });
+    }
+    try {
+      const r = execFileSync('git', ['-C', projectRoot, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], {
+        encoding: 'utf8', timeout: 2000, windowsHide: true,
+      }).trim();
+      const parts = r.split('/');
+      if (parts.length === 2 && parts[1]) autoShip.default_branch = parts[1];
+    } catch (_e) { /* default main */
+      cairnLog.warn('main', 'auto_ship_branch_probe_failed', { message: (_e && _e.message) || String(_e) });
+    }
+    const patProbe = [
+      path.join(projectRoot, '.token', 'ljl.txt'),
+      path.join(projectRoot, '.cairn-push-token', 'ljl-token.txt'),
+      path.join(projectRoot, '.cairn-push-token', 'token.txt'),
+      path.join(projectRoot, '.git-token'),
+    ];
+    for (const p of patProbe) {
+      if (fs.existsSync(p)) { autoShip.pat_path = p; break; }
+    }
+    const setRes = registry.setCockpitSettings(reg, projectId, Object.assign({}, existing, { auto_ship: autoShip }));
+    if (setRes && setRes.reg) {
+      reg = setRes.reg;
+      try { registry.saveRegistry(reg); } catch (_e) { cairnLog.warn('main', 'auto_ship_registry_save_failed', { message: (_e && _e.message) || String(_e) }); }
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('_probeAutoShip failed:', e && e.message);
+  }
+}
+
+/**
+ * Close a read handle if no remaining registry project still points
+ * at it. Call after registry mutations.
+ */
+function gcDbHandles() {
+  const stillReferenced = new Set(registry.uniqueDbPaths(reg));
+  for (const [p, entry] of dbHandles.entries()) {
+    if (!stillReferenced.has(p)) {
+      try { entry.db.close(); } catch (_e) { cairnLog.warn('main', 'db_handle_close_failed', { message: (_e && _e.message) || String(_e) }); }
+      dbHandles.delete(p);
+    }
+  }
+  for (const [p, w] of writeHandles.entries()) {
+    if (!stillReferenced.has(p)) {
+      try { w.close(); } catch (_e) { cairnLog.warn('main', 'write_handle_close_failed', { message: (_e && _e.message) || String(_e) }); }
+      writeHandles.delete(p);
+    }
+  }
+}
+
+function openAllRegistryDbs() {
+  for (const p of registry.uniqueDbPaths(reg)) ensureDbHandle(p);
+}
+
+/**
+ * Resolve the "active" db handle for legacy / non-project IPC calls.
+ * Routes through selectedProjectId if set; otherwise falls back to the
+ * default DB path (so pet sprite + legacy Inspector continue working
+ * even when the user is on the L1 view).
+ */
+function activeDbEntry() {
+  if (selectedProjectId) {
+    const proj = reg.projects.find(p => p.id === selectedProjectId);
+    if (proj) return ensureDbHandle(proj.db_path);
+  }
+  // Fallback: first registry entry, or the default DB.
+  if (reg.projects.length > 0) return ensureDbHandle(reg.projects[0].db_path);
+  return ensureDbHandle(registry.DEFAULT_DB_PATH);
+}
+
+function activeDbPath() {
+  if (selectedProjectId) {
+    const proj = reg.projects.find(p => p.id === selectedProjectId);
+    if (proj) return proj.db_path;
+  }
+  if (reg.projects.length > 0) return reg.projects[0].db_path;
+  return registry.DEFAULT_DB_PATH;
+}
+
+function activeProject() {
+  if (!selectedProjectId) return null;
+  return reg.projects.find(p => p.id === selectedProjectId) || null;
+}
+
+// ---------------------------------------------------------------------------
+// Windows
+// ---------------------------------------------------------------------------
+
+let petWindow = null;
+let panelWindow = null;
+let legacyWindow = null;
+let tray = null;
+let trayPollTimer = null;
+let lastTrayState = null;        // 'idle' | 'warn' | 'alert'
+let isQuitting = false;          // set by Quit menu so close handlers cooperate
+
+function createPetWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const W = 96, H = 104, MARGIN = 24;
+
+  petWindow = new BrowserWindow({
+    width: W, height: H,
+    x: width - W - MARGIN,
+    y: height - H - MARGIN,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  petWindow.setAlwaysOnTop(true, 'screen-saver');
+  petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  petWindow.loadFile('preview.html');
+  petWindow.on('blur', () => {
+    if (petWindow) petWindow.setAlwaysOnTop(true, 'screen-saver');
+  });
+  petWindow.on('closed', () => { petWindow = null; });
+}
+
+// ---------------------------------------------------------------------------
+// Frameless side-panel geometry + slide animation (Day 4)
+// ---------------------------------------------------------------------------
+//
+// Goal: the panel reads as a real desktop side-panel — frameless,
+// right-edge attached, full work-area height, slides in/out from the
+// right. The custom titlebar lives in panel.html (-webkit-app-region:
+// drag); main owns geometry + animation + show/hide lifecycle.
+//
+// Animation: 12 steps × 20ms = 240ms total. easeOutCubic.
+// On Windows setBounds in a tight setInterval is occasionally janky on
+// composited displays; if we ever observe it we can fall back to
+// instant show/hide by setting PANEL_ANIM_STEPS = 1 — same code path.
+
+const PANEL_WIDTH      = 500;
+const PANEL_ANIM_STEPS = 12;
+const PANEL_ANIM_MS    = 240;
+
+/** @type {NodeJS.Timeout|null} */
+let panelAnimTimer = null;
+
+function rightEdgeBounds() {
+  const wa = screen.getPrimaryDisplay().workArea;
+  return {
+    x: wa.x + wa.width - PANEL_WIDTH,
+    y: wa.y,
+    width: PANEL_WIDTH,
+    height: wa.height,
+  };
+}
+
+function offscreenBounds() {
+  const wa = screen.getPrimaryDisplay().workArea;
+  return {
+    x: wa.x + wa.width, // entirely off the right edge
+    y: wa.y,
+    width: PANEL_WIDTH,
+    height: wa.height,
+  };
+}
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+function cancelPanelAnim() {
+  if (panelAnimTimer) {
+    clearInterval(panelAnimTimer);
+    panelAnimTimer = null;
+  }
+}
+
+function animatePanelTo(targetX, doneFn) {
+  if (!panelWindow) return;
+  cancelPanelAnim();
+  const start = panelWindow.getBounds();
+  const dx = targetX - start.x;
+  if (PANEL_ANIM_STEPS <= 1 || dx === 0) {
+    panelWindow.setBounds({ x: targetX, y: start.y, width: start.width, height: start.height });
+    if (doneFn) doneFn();
+    return;
+  }
+  let step = 0;
+  panelAnimTimer = setInterval(() => {
+    step++;
+    const t = step / PANEL_ANIM_STEPS;
+    const x = Math.round(start.x + dx * easeOutCubic(t));
+    try {
+      panelWindow.setBounds({ x, y: start.y, width: start.width, height: start.height });
+    } catch (_e) { /* window may have been destroyed mid-animation */
+      cairnLog.warn('main', 'panel_anim_set_bounds_failed', { message: (_e && _e.message) || String(_e) });
+    }
+    if (step >= PANEL_ANIM_STEPS) {
+      cancelPanelAnim();
+      try {
+        if (panelWindow) {
+          panelWindow.setBounds({ x: targetX, y: start.y, width: start.width, height: start.height });
+        }
+      } catch (_e) { cairnLog.warn('main', 'panel_anim_final_bounds_failed', { message: (_e && _e.message) || String(_e) }); }
+      if (doneFn) doneFn();
+    }
+  }, PANEL_ANIM_MS / PANEL_ANIM_STEPS);
+}
+
+function showPanelSlide() {
+  if (!panelWindow) {
+    createPanelWindow(); // ready-to-show will trigger this same path
+    return;
+  }
+  cancelPanelAnim();
+  const onR = rightEdgeBounds();
+  const off = offscreenBounds();
+  // Make sure we start fully off-screen before show, otherwise the OS
+  // briefly paints the panel at its last position.
+  panelWindow.setBounds(off);
+  if (!panelWindow.isVisible()) panelWindow.show();
+  panelWindow.focus();
+  animatePanelTo(onR.x);
+}
+
+function hidePanelSlide() {
+  if (!panelWindow || !panelWindow.isVisible()) return;
+  cancelPanelAnim();
+  const off = offscreenBounds();
+  animatePanelTo(off.x, () => {
+    if (panelWindow) {
+      try { panelWindow.hide(); } catch (_e) { cairnLog.warn('main', 'panel_hide_failed', { message: (_e && _e.message) || String(_e) }); }
+    }
+  });
+}
+
+function createPanelWindow() {
+  if (panelWindow) {
+    showPanelSlide();
+    return;
+  }
+  // Start off-screen; ready-to-show triggers slide-in to right-edge.
+  const off = offscreenBounds();
+  panelWindow = new BrowserWindow({
+    x: off.x, y: off.y, width: off.width, height: off.height,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,         // tray + marker are the entry points
+    show: false,
+    title: 'Cairn',
+    backgroundColor: '#1a1a1a',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  panelWindow.loadFile('panel.html');
+
+  panelWindow.once('ready-to-show', () => {
+    showPanelSlide();
+  });
+
+  // Alt-F4 / programmatic .close() must hide instead of destroy, so the
+  // tray + marker remain meaningful entry points and quit only runs via
+  // the tray Quit item (which flips isQuitting).
+  panelWindow.on('close', (e) => {
+    if (!isQuitting && tray) {
+      e.preventDefault();
+      hidePanelSlide();
+    }
+  });
+  panelWindow.on('closed', () => {
+    cancelPanelAnim();
+    panelWindow = null;
+  });
+}
+
+function createLegacyWindow() {
+  if (legacyWindow) {
+    legacyWindow.focus();
+    return;
+  }
+  legacyWindow = new BrowserWindow({
+    width: 480,
+    height: 600,
+    title: 'Cairn Inspector (legacy)',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  legacyWindow.loadFile('inspector-legacy.html');
+  legacyWindow.on('closed', () => { legacyWindow = null; });
+}
+
+// ---------------------------------------------------------------------------
+// Tray (system tray / menu bar entry)
+// ---------------------------------------------------------------------------
+
+function togglePanel() {
+  if (!panelWindow) {
+    createPanelWindow();
+    return;
+  }
+  if (panelWindow.isVisible() && panelWindow.isFocused()) {
+    hidePanelSlide();
+  } else if (panelWindow.isVisible()) {
+    panelWindow.focus();
+  } else {
+    showPanelSlide();
+  }
+}
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Open Cairn',            click: () => togglePanel() },
+    { label: 'Open Legacy Inspector', click: () => createLegacyWindow() },
+    { type: 'separator' },
+    { label: 'Quit',                  click: () => {
+      isQuitting = true;
+      app.quit();
+    }},
+  ]);
+}
+
+/**
+ * Compute tray state from the project summary. Priority:
+ *   alert  — open conflicts > 0 OR failed outcomes > 0
+ *   warn   — open blockers > 0 OR waiting_review tasks > 0
+ *   idle   — otherwise
+ */
+function deriveTrayState(summary) {
+  if (!summary || !summary.available) return 'idle';
+  if ((summary.conflicts_open  || 0) > 0) return 'alert';
+  if ((summary.outcomes_failed || 0) > 0) return 'alert';
+  if ((summary.blockers_open   || 0) > 0) return 'warn';
+  if ((summary.tasks_waiting_review || 0) > 0) return 'warn';
+  return 'idle';
+}
+
+function buildTrayTooltip(summary) {
+  if (!summary || !summary.available) return 'Cairn — DB unavailable';
+  return (
+    `Cairn — ${summary.agents_active} agents · ` +
+    `${summary.blockers_open} blockers · ` +
+    `${summary.outcomes_failed} FAIL · ` +
+    `${summary.conflicts_open} conflicts`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tray idle / warn / alert aggregation — read-only across DB handles
+//
+// Algorithm (G3 in 2026-05-14-bootstrap-grill, formalized 2026-05-14):
+//   - For every registered project, open (or reuse) its DB handle and run
+//     projectQueries.queryProjectScopedSummary against the agent-IDs the
+//     attribution layer resolves (hints ∪ capability-tagged processes).
+//   - Each project yields a health verdict (`idle` / `warn` / `alert`).
+//   - The TRAY image takes the WORST across all projects — `alert` > `warn`
+//     > `idle`. Once `alert` is hit, the loop does NOT short-circuit
+//     (we still aggregate counters for the tooltip).
+//   - Unassigned buckets do NOT influence the verdict — a stray untagged
+//     process should not light the tray red.
+//   - Fallback (no registered projects yet): scan the default DB so first-
+//     run installs aren't entirely blind. Same idle/warn/alert rules.
+//
+// Counters that drive the tooltip ("X blockers · Y failed · Z conflicts ·
+// N live agents"):
+//   - totalBlockers  = SUM(summary.blockers_open)             // BLOCKED tasks
+//   - totalFail      = SUM(outcomes_failed + tasks_failed)
+//   - totalConflicts = SUM(conflicts_open)
+//   - liveAgents (counted in the tooltip section below) folds in Claude /
+//     Codex session-log scans + MCP capability rows via agentActivity.
+//
+// Read-only end to end. No writes to any DB from this path.
+// ---------------------------------------------------------------------------
+function refreshTray() {
+  if (!tray) return;
+  // Aggregate across all registered projects: tray reflects the worst
+  // health across them. Unassigned buckets are not counted (they
+  // shouldn't drive the tray to alert just because random untagged
+  // rows exist in the DB).
+  let worst = 'idle';
+  let totalBlockers = 0, totalFail = 0, totalConflicts = 0;
+  let aggAvailable = false;
+
+  // Single scan per source per tray refresh.
+  const claudeAll = claudeSessionScan.scanClaudeSessions();
+  const codexAll  = codexSessionScan.scanCodexSessions();
+
+  // Aggregate AgentActivity across all projects + (when relevant) the
+  // primary Unassigned bucket so the tooltip can speak in product
+  // language ("3 live agents · 2 recent") instead of per-source counts.
+  /** @type {Array<object>} */
+  const allActivities = [];
+
+  for (const p of reg.projects) {
+    const entry = ensureDbHandle(p.db_path);
+    if (!entry) continue;
+    aggAvailable = true;
+    const agentIds = projectQueries.resolveProjectAgentIds(
+      entry.db, entry.tables, p,
+    );
+    const s = projectQueries.queryProjectScopedSummary(
+      entry.db, entry.tables, p.db_path, agentIds,
+    );
+    if (s.health === 'alert') worst = 'alert';
+    else if (s.health === 'warn' && worst !== 'alert') worst = 'warn';
+    totalBlockers  += s.blockers_open;
+    totalFail      += s.outcomes_failed + s.tasks_failed;
+    totalConflicts += s.conflicts_open;
+
+    const mcpForActivity = buildMcpActivityRows(entry.db, entry.tables, p, agentIds);
+    const built = agentActivity.buildProjectActivities(
+      p, mcpForActivity, claudeAll, codexAll,
+      { claude: claudeSessionScan, codex: codexSessionScan, db: entry.db },
+    );
+    for (const a of built.activities) allActivities.push(a);
+  }
+
+  // Fallback: no registry projects — show legacy queryProjectSummary
+  // against the default DB so the tray is still meaningful for users
+  // who haven't configured anything yet, plus surface global Claude /
+  // Codex activities so the tooltip lights up even before the user
+  // registers their first project.
+  if (!aggAvailable) {
+    const fallbackEntry = activeDbEntry();
+    if (fallbackEntry) {
+      const s = queries.queryProjectSummary(
+        fallbackEntry.db, fallbackEntry.tables, activeDbPath(),
+      );
+      worst = deriveTrayState(s);
+      totalBlockers  = s.blockers_open;
+      totalFail      = s.outcomes_failed;
+      totalConflicts = s.conflicts_open;
+      aggAvailable   = s.available;
+
+      // Treat every Claude/Codex row as Unassigned in this branch
+      // (there are no projects to attribute to). MCP rows: skip — we
+      // don't have a project context to compute attribution against.
+      const builtU = agentActivity.buildUnassignedActivities([], claudeAll, codexAll);
+      for (const a of builtU.activities) allActivities.push(a);
+      if (builtU.summary.total > 0) aggAvailable = true;
+    }
+  }
+
+  if (worst !== lastTrayState) {
+    tray.setImage(TRAY_IMAGES[worst]);
+    lastTrayState = worst;
+  }
+
+  if (!aggAvailable) {
+    tray.setToolTip('Cairn — DB unavailable');
+  } else {
+    const sum = agentActivity.summarizeActivities(allActivities);
+    const live   = sum.by_family.live;
+    const recent = sum.by_family.recent;
+    // Tooltip language (PRODUCT MVP §0): product control surface, not a
+    // "list of source counts". Lead with live + recent agent activity,
+    // then the project-impact counts (blockers, FAIL, conflicts) the
+    // tray icon color also encodes.
+    const parts = [`Cairn — ${live} live agent${live === 1 ? '' : 's'}`];
+    if (recent > 0) parts.push(`${recent} recent`);
+    parts.push(`${totalBlockers} blocker${totalBlockers === 1 ? '' : 's'}`);
+    parts.push(`${totalFail} FAIL`);
+    parts.push(`${totalConflicts} conflict${totalConflicts === 1 ? '' : 's'}`);
+    tray.setToolTip(parts.join(' · '));
+  }
+}
+
+function createTray() {
+  if (tray) return;
+  // Start with idle; refreshTray will update immediately.
+  tray = new Tray(TRAY_IMAGES.idle);
+  tray.setToolTip('Cairn — starting…');
+  tray.setContextMenu(buildTrayMenu());
+
+  // Single-click toggles panel on Windows. macOS shows the context menu
+  // on click by default; Quick Slice main target is Windows (R11), so
+  // this is fine for now.
+  tray.on('click', () => togglePanel());
+
+  // Update icon + tooltip every 1s alongside panel polling.
+  refreshTray();
+  trayPollTimer = setInterval(refreshTray, 1000);
+}
+
+// ---------------------------------------------------------------------------
+// IPC — Project-Aware (L1 + project-scoped views)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the L1 Projects-list payload: per-project scoped summary +
+ * one Unassigned bucket per unique db_path.
+ *
+ * Real Agent Presence step 2: Claude Code session-file rows are folded
+ * into each project's summary (and the unassigned bucket) so the L1 card
+ * can show "agents MCP X · Claude Y" without the panel needing to make
+ * a second IPC round-trip. Claude rows do not impersonate MCP rows: the
+ * counts go into separate `claude_*` fields, never into `agents_active`.
+ *
+ * `last_activity_at` for a project incorporates Claude updated_at too,
+ * so the L1 "last activity 8m ago" line stays accurate when only Claude
+ * was active.
+ */
+function getProjectsList() {
+  // One scan per IPC call. Each row is a small JSON read; cost is
+  // dominated by directory enumeration, which is bounded by the number
+  // of live Claude sessions (typically < 10). No caching needed yet.
+  const claudeAll = claudeSessionScan.scanClaudeSessions();
+  // Codex sessions accumulate in dated subdirs — bounded by the
+  // adapter's default 7-day window. Scan once per IPC call.
+  const codexAll = codexSessionScan.scanCodexSessions();
+
+  const projects = reg.projects.map(p => {
+    const entry = ensureDbHandle(p.db_path);
+    if (!entry) {
+      return {
+        id: p.id, label: p.label, project_root: p.project_root,
+        db_path: p.db_path, agent_id_hints: p.agent_id_hints,
+        last_opened_at: p.last_opened_at, summary: null,
+      };
+    }
+    const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, p);
+    const summary = projectQueries.queryProjectScopedSummary(
+      entry.db, entry.tables, p.db_path, agentIds,
+    );
+
+    const { matched: claudeForP } = claudeSessionScan.partitionByProject(claudeAll, p);
+    foldClaudeIntoSummary(summary, claudeForP);
+
+    const { matched: codexForP } = codexSessionScan.partitionByProject(codexAll, p);
+    foldCodexIntoSummary(summary, codexForP);
+
+    // Activity layer: build the unified row list for this project so the
+    // L1 card and the tray can render headline counts in product
+    // language ("3 live agents · 2 recent") instead of per-source
+    // numbers. The legacy claude_*/codex_*/agents_active fields above
+    // remain populated for the per-source breakdown line.
+    const mcpForActivity = buildMcpActivityRows(entry.db, entry.tables, p, agentIds);
+    const built = agentActivity.buildProjectActivities(
+      p, mcpForActivity, claudeAll, codexAll,
+      { claude: claudeSessionScan, codex: codexSessionScan, db: entry.db },
+    );
+    summary.agent_activity = built.summary;
+
+    return {
+      id: p.id, label: p.label, project_root: p.project_root,
+      db_path: p.db_path, agent_id_hints: p.agent_id_hints,
+      last_opened_at: p.last_opened_at, summary,
+    };
+  });
+
+  // One Unassigned bucket per unique db_path. Claude rows whose cwd
+  // matches no registered project attach to the *primary* (first) bucket
+  // only — same single-attach rule as get-unassigned-detail, so a
+  // multi-DB user doesn't see the same Claude row counted twice. Codex
+  // follows the identical rule for the same reason.
+  const claudeUnassigned = claudeSessionScan.unassignedClaudeSessions(claudeAll, reg.projects);
+  const codexUnassigned  = codexSessionScan.unassignedCodexSessions(codexAll, reg.projects);
+  const dbPaths = registry.uniqueDbPaths(reg);
+  const unassigned = [];
+  for (const dbPath of dbPaths) {
+    const entry = ensureDbHandle(dbPath);
+    if (!entry) continue;
+    const attributed = projectQueries.resolveAttributedAgentIdsForDb(
+      entry.db, entry.tables, reg.projects, dbPath,
+    );
+    const u = projectQueries.queryUnassignedSummary(entry.db, entry.tables, dbPath, attributed);
+    const isPrimaryBucket = dbPaths[0] === dbPath;
+    foldClaudeIntoSummary(u, isPrimaryBucket ? claudeUnassigned : []);
+    foldCodexIntoSummary(u,  isPrimaryBucket ? codexUnassigned  : []);
+
+    // Activity summary for the Unassigned bucket: same shape as
+    // projects so the panel's L1 renderer can iterate uniformly.
+    const mcpForActivity = isPrimaryBucket
+      ? buildMcpActivityRowsForUnassigned(entry.db, entry.tables, dbPath, attributed)
+      : [];
+    const builtU = agentActivity.buildUnassignedActivities(
+      mcpForActivity,
+      isPrimaryBucket ? claudeUnassigned : [],
+      isPrimaryBucket ? codexUnassigned  : [],
+      entry.db,
+    );
+    u.agent_activity = builtU.summary;
+
+    unassigned.push(u);
+  }
+
+  return { projects, unassigned };
+}
+
+/**
+ * Pull MCP process rows attributable to a project AND mark each one
+ * with the attribution route (capability vs hint). Returned shape
+ * matches what queryProjectScopedSessions emits (agent_id, agent_type,
+ * status, computed_state, last_heartbeat, heartbeat_ttl, capabilities,
+ * registered_at, owns_tasks) plus an extra `_attribution` field that
+ * agent-activity.cjs reads to fill the activity row.
+ *
+ * Cheap re-use: queryProjectScopedSessions already does the SQL +
+ * computed_state derivation; here we only have to layer the
+ * attribution decision on top.
+ */
+function buildMcpActivityRows(db, tables, project, agentIds) {
+  const sess = projectQueries.queryProjectScopedSessions(db, tables, agentIds);
+  const hints = (project && project.agent_id_hints) || [];
+  for (const row of sess.sessions) {
+    row._attribution = agentActivity.decideMcpAttribution(
+      row.capabilities, project && project.project_root, hints, row.agent_id,
+    );
+  }
+  return sess.sessions;
+}
+
+/**
+ * Pull unassigned MCP rows for one db_path. Mirror of
+ * buildMcpActivityRows but for the Unassigned bucket: anything in
+ * processes whose agent_id is NOT in `attributedSet`. Each row is
+ * marked with `_attribution: null` so the activity row carries the
+ * "no attribution" signal cleanly.
+ */
+function buildMcpActivityRowsForUnassigned(db, tables, dbPath, attributedSet) {
+  const detail = projectQueries.queryUnassignedDetail(db, tables, dbPath, attributedSet);
+  for (const row of detail.agents) row._attribution = null;
+  return detail.agents;
+}
+
+/**
+ * Mutate `summary` in place to add Claude-Code presence counts.
+ * Adds: `claude_busy`, `claude_idle`, `claude_dead`, `claude_unknown`,
+ * `claude_total` (always; zero when none). Also bumps `last_activity_at`
+ * if any Claude row is more recent than the existing value.
+ *
+ * Kept here (orchestration layer) rather than in project-queries.cjs
+ * because Claude is a non-DB source and we want project-queries.cjs to
+ * stay strictly about the Cairn SQLite schema.
+ */
+function foldClaudeIntoSummary(summary, claudeRows) {
+  if (!summary) return;
+  const c = claudeSessionScan.summarizeClaudeRows(claudeRows);
+  summary.claude_busy    = c.busy;
+  summary.claude_idle    = c.idle;
+  summary.claude_dead    = c.dead;
+  summary.claude_unknown = c.unknown;
+  summary.claude_total   = c.total;
+  if (c.last_activity_at && c.last_activity_at > (summary.last_activity_at || 0)) {
+    summary.last_activity_at = c.last_activity_at;
+  }
+}
+
+/**
+ * Mutate `summary` in place to add Codex session-log presence counts.
+ * Adds: `codex_recent`, `codex_inactive`, `codex_unknown`,
+ * `codex_total` (always; zero when none). Also bumps `last_activity_at`
+ * if any Codex row's mtime is more recent than the existing value.
+ *
+ * Kept here (orchestration layer) for the same reason as foldClaude:
+ * Codex is a non-DB source and project-queries.cjs stays strictly about
+ * the Cairn SQLite schema.
+ */
+function foldCodexIntoSummary(summary, codexRows) {
+  if (!summary) return;
+  const c = codexSessionScan.summarizeCodexRows(codexRows);
+  summary.codex_recent   = c.recent;
+  summary.codex_inactive = c.inactive;
+  summary.codex_unknown  = c.unknown;
+  summary.codex_total    = c.total;
+  if (c.last_activity_at && c.last_activity_at > (summary.last_activity_at || 0)) {
+    summary.last_activity_at = c.last_activity_at;
+  }
+}
+
+// Wrap ipcMain.handle so every handler thrown error gets logged with the
+// channel name. Otherwise IPC failures vanish into the renderer console
+// only, which is exactly the "panel still wrong, no idea why" mode of
+// failure the user kept hitting on 2026-05-13/14. Returns are unchanged
+// (electron auto-unwraps promise rejection into renderer error).
+{
+  const _origHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = function instrumentedHandle(channel, fn) {
+    return _origHandle(channel, async (...args) => {
+      try {
+        return await fn(...args);
+      } catch (err) {
+        cairnLog.error('ipc', 'ipc_failed', {
+          channel,
+          message: (err && err.message) || String(err),
+          stack: err && err.stack ? String(err.stack).split('\n').slice(0, 5).join(' | ') : undefined,
+        });
+        throw err;
+      }
+    });
+  };
+}
+
+// Renderer-side log relay. Renderer is untrusted-ish — sanitize before
+// passing to disk: cap component/event to 64 chars, details must be a
+// plain object (else dropped silently).
+ipcMain.on('cairn:log', (_e, component, event, details, level) => {
+  const c = typeof component === 'string' ? component.slice(0, 64) : 'renderer';
+  const ev = typeof event === 'string' ? event.slice(0, 64) : 'unspecified';
+  let d = (details && typeof details === 'object' && !Array.isArray(details)) ? details : {};
+  // Byte-cap renderer details so a hostile / runaway renderer can't
+  // append megabyte-per-event entries to the log. 4KB is plenty for
+  // structured event payload (view_changed etc. — sub-100 bytes
+  // typical).
+  try {
+    const s = JSON.stringify(d);
+    if (s && s.length > 4096) d = { _truncated: true, len: s.length };
+  } catch (_e) { d = { _serialize_failed: true }; }
+  const lv = level === 'warn' || level === 'error' ? level : 'info';
+  cairnLog.log(c, ev, d, lv);
+});
+
+ipcMain.handle('get-projects-list', () => getProjectsList());
+
+// ---------------------------------------------------------------------------
+// Cockpit redesign (panel-cockpit-redesign Phase 1) — single-project payload.
+// Strict read-only. Used by Module 1-5 renderers.
+// ---------------------------------------------------------------------------
+// Per-project TTL cache for mentor signal-pill collection. Panel polls
+// get-cockpit-state every ~1s; collectMentorSignals does git + fs ops
+// (~100-500ms on a warm repo). A 5s cache keeps the pills fresh-enough
+// while avoiding redundant git spawns each tick.
+const _mentorSignalsCache = new Map(); // projectId -> { result, expiresAt }
+const _MENTOR_SIGNALS_TTL_MS = 5000;
+
+ipcMain.handle('get-cockpit-state', async (_e, projectId, opts) => {
+  if (!projectId || typeof projectId !== 'string') {
+    return cockpitState.emptyCockpitState(null, null, 'projectId_required');
+  }
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) {
+    return cockpitState.emptyCockpitState(null, null, 'project_not_found');
+  }
+  // Defense-in-depth fallback. DB_PATH_SENTINELS check in ensureDbHandle
+  // is the canonical handler; this inline copy is kept because dbPathForLookup
+  // is also used directly in the emptyCockpitState() error path below.
+  // If a NEW sentinel is added, update both DB_PATH_SENTINELS (canonical) AND
+  // this check.
+  let dbPathForLookup = proj.db_path;
+  if (!dbPathForLookup || dbPathForLookup === '/dev/null' || dbPathForLookup === '(unknown)') {
+    dbPathForLookup = registry.DEFAULT_DB_PATH;
+  }
+  const entry = ensureDbHandle(dbPathForLookup);
+  if (!entry) {
+    return cockpitState.emptyCockpitState(proj, dbPathForLookup, 'db_unavailable');
+  }
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  // registry.getProjectGoal returns ProjectGoal object { id, title,
+  // desired_outcome, success_criteria, non_goals, created_at, updated_at }
+  // — NOT a {text} object. 2026-05-14 bug 鸭总 caught: original code
+  // looked for `goal.text` which never exists, so goalText was always
+  // null → autopilot stuck at NO_GOAL → Mentor never engaged → panel
+  // showed no change after the user set a goal.
+  // Backward-compat: if goal is somehow a raw string (legacy callers /
+  // pre-Goal-Mode-Lite registries), accept it as goalText directly.
+  const goal = registry.getProjectGoal(reg, projectId);
+  const goalText = mentorPolicy.extractGoalTitle(goal, {
+    component: 'main.cockpit-state.goalText',
+    project_id: projectId,
+  });
+  // Inject leader from cockpit settings (Phase 6) so cockpit-state can
+  // surface it in the State Strip + use it for the "talk to leader" path.
+  const settings = registry.getCockpitSettings(reg, projectId);
+  const projForCockpit = Object.assign({}, proj, {
+    leader: settings.leader,
+    // Mode A/B (CEO 2026-05-14): expose current mode so panel header
+    // can render the A|B toggle without an extra IPC roundtrip.
+    mode: settings.mode,
+    // Mode A v2 phase (CEO 2026-05-14 reframe): expose phase so the
+    // panel sidebar can render Start/Stop/Re-plan buttons + a status
+    // pill (planning / plan_pending / running / paused).
+    mode_a_phase: settings.mode_a && settings.mode_a.phase,
+  });
+  // Signal-cat refactor commit A wiring (2026-05-15): collect mentor
+  // signals so cockpit-state.buildCockpitState can populate
+  // state.mentor_signals for the STATUS pill row. Cached per-project
+  // for 5s to keep the 1s panel poll cheap. Skipped for legacy/unknown
+  // project_root since collectMentorSignals needs a real path.
+  let mentorSignalsResult = null;
+  if (proj.project_root && proj.project_root !== '(unknown)') {
+    const cached = _mentorSignalsCache.get(projectId);
+    const nowMs = Date.now();
+    if (cached && cached.expiresAt > nowMs) {
+      mentorSignalsResult = cached.result;
+    } else {
+      try {
+        const profile = mentorProjectProfile.loadProfile(entry.db, proj);
+        mentorSignalsResult = await mentorCollect.collectMentorSignals(projectId, {
+          project_root: proj.project_root,
+          signal_overrides: (profile && profile.signal_overrides) || {},
+        });
+        _mentorSignalsCache.set(projectId, {
+          result: mentorSignalsResult,
+          expiresAt: nowMs + _MENTOR_SIGNALS_TTL_MS,
+        });
+      } catch (e) {
+        cairnLog.warn('main', 'cockpit_state_mentor_signals_failed', {
+          project_id: projectId,
+          message: (e && e.message) || String(e),
+        });
+        mentorSignalsResult = null;
+      }
+    }
+  }
+  const mergedOpts = Object.assign({}, opts || {}, {
+    mentor_signals_result: mentorSignalsResult,
+  });
+  const payload = cockpitState.buildCockpitState(
+    entry.db, entry.tables, projForCockpit, goalText, agentIds, mergedOpts,
+  );
+  // 2026-05-14 fix: surface the FULL goal object so the panel's "✎ 编辑"
+  // entry point can pre-fill the editor with title + desired_outcome
+  // + success_criteria + non_goals. state.goal is the title string
+  // (existing contract; many panel render paths depend on its shape);
+  // state.goal_full is the new object-shaped sibling. Without this,
+  // openGoalEditModal(lastGoal) opens with lastGoal=null → empty form
+  // → Save would wipe the existing fields. That's why 鸭总 reported
+  // "再点开编辑变空" — the previous lastGoal sync code checked
+  // `typeof goalObj === 'object'` but state.goal was a string, so the
+  // sync never fired.
+  payload.goal_full = goal || null;
+  return payload;
+});
+
+// Mode B Continuous Iteration — lane data layer (slice 1, 2026-05-14).
+// Per PRODUCT.md §1.3 #4a: lane chain stops at REVIEWED — user must
+// explicitly advance after eyeballing each candidate's outcome.
+// D9.1 tier-A mutations: createLane / advanceLane / pauseLane / resumeLane
+// write scratchpad rows. No env flag gate.
+ipcMain.handle('cockpit-lane-create', (_e, input) => {
+  if (!input || typeof input !== 'object') return { ok: false, error: 'input_required' };
+  const { project_id, candidates, authorized_by } = input;
+  if (!project_id) return { ok: false, error: 'project_id_required' };
+  const proj = reg.projects.find(p => p.id === project_id);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const wdb = openWriteDb(proj.db_path);
+  return cockpitLane.createLane(wdb, project_id, candidates || [], authorized_by || 'user');
+});
+
+ipcMain.handle('cockpit-lane-list', (_e, projectId, opts) => {
+  if (!projectId) return [];
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return [];
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return [];
+  return cockpitLane.queryLanes(entry.db, projectId, opts || {});
+});
+
+ipcMain.handle('cockpit-lane-advance', (_e, projectId, laneId) => {
+  if (!projectId || !laneId) return { ok: false, error: 'project_id_and_lane_id_required' };
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const wdb = openWriteDb(proj.db_path);
+  return cockpitLane.advanceLane(wdb, projectId, laneId);
+});
+
+ipcMain.handle('cockpit-lane-pause', (_e, projectId, laneId) => {
+  if (!projectId || !laneId) return { ok: false, error: 'project_id_and_lane_id_required' };
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const wdb = openWriteDb(proj.db_path);
+  return cockpitLane.pauseLane(wdb, projectId, laneId);
+});
+
+ipcMain.handle('cockpit-lane-resume', (_e, projectId, laneId) => {
+  if (!projectId || !laneId) return { ok: false, error: 'project_id_and_lane_id_required' };
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const wdb = openWriteDb(proj.db_path);
+  return cockpitLane.resumeLane(wdb, projectId, laneId);
+});
+
+// A1.2 L2 Session Timeline — drill-down view (panel-cockpit-redesign 2026-05-14).
+// Returns chronological agent execution events for one session, joined with
+// kernel checkpoints as synthetic events (rewind anchors).
+ipcMain.handle('get-session-timeline', (_e, projectId, agentId, opts) => {
+  if (!projectId || typeof projectId !== 'string' || !agentId || typeof agentId !== 'string') {
+    return { ok: false, error: 'project_id_and_agent_id_required' };
+  }
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  let dbPathForLookup = proj.db_path;
+  if (!dbPathForLookup || dbPathForLookup === '/dev/null' || dbPathForLookup === '(unknown)') {
+    dbPathForLookup = registry.DEFAULT_DB_PATH;
+  }
+  const entry = ensureDbHandle(dbPathForLookup);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  const events = cockpitState.querySessionTimeline(entry.db, entry.tables, agentId, opts || {});
+  const displayName = cockpitState.deriveSessionDisplayName(agentId);
+  // Also read scratchpad session_name override (forward-compat with A3-part1).
+  let nameOverride = null;
+  if (entry.tables.has('scratchpad')) {
+    try {
+      const row = entry.db.prepare('SELECT value_json FROM scratchpad WHERE key = ?')
+        .get(`session_name/${agentId}`);
+      if (row && row.value_json) {
+        try {
+          const body = JSON.parse(row.value_json);
+          if (body && typeof body.name === 'string' && body.name.trim()) nameOverride = body.name.trim();
+        } catch (_e) { cairnLog.warn('main', 'session_name_parse_failed', { message: (_e && _e.message) || String(_e) }); }
+      }
+    } catch (_e) { cairnLog.warn('main', 'session_name_query_failed', { message: (_e && _e.message) || String(_e) }); }
+  }
+  return {
+    ok: true,
+    agent_id: agentId,
+    display_name: nameOverride || displayName,
+    events,
+    ts: Date.now(),
+  };
+});
+
+// Cockpit redesign Phase 3 — Module 2 STEER. D9.1 tier-A first-class
+// (panel-cockpit-redesign §2.E #12); no env flag gate.
+ipcMain.handle('cockpit-steer', (_e, input) => {
+  if (!input || typeof input !== 'object') {
+    return { ok: false, error: 'input_required' };
+  }
+  if (!input.project_id || !input.agent_id || !input.message) {
+    return { ok: false, error: 'project_id_agent_id_message_required' };
+  }
+  const proj = reg.projects.find(p => p.id === input.project_id);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  return cockpitSteer.steerAgent(entry.db, entry.tables, {
+    project_id: input.project_id,
+    agent_id: input.agent_id,
+    message: input.message,
+  }, {
+    copyToClipboard: (text) => {
+      try { clipboard.writeText(text); } catch (_e) { cairnLog.warn('main', 'clipboard_write_failed', { message: (_e && _e.message) || String(_e) }); }
+    },
+  });
+});
+
+// M2 Todolist (A2.1) — add user_todo entry. Tier-A mutation (writes scratchpad).
+// D9.1 first-class; no env flag gate (same tier as cockpit-steer).
+// Validation: label non-empty, ≤ 200 chars; project must be registered + have DB.
+ipcMain.handle('cockpit-todo-add', (_e, input) => {
+  if (!input || typeof input !== 'object') {
+    return { ok: false, error: 'input_required' };
+  }
+  if (!input.project_id || typeof input.project_id !== 'string') {
+    return { ok: false, error: 'project_id_required' };
+  }
+  const rawLabel = (input.label || '').toString().trim();
+  if (!rawLabel) return { ok: false, error: 'label_empty' };
+  if (rawLabel.length > 200) return { ok: false, error: 'label_too_long' };
+
+  const proj = reg.projects.find(p => p.id === input.project_id);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  if (!entry.tables || !entry.tables.has('scratchpad')) {
+    return { ok: false, error: 'scratchpad_missing' };
+  }
+
+  // Generate a ULID for the key suffix (reuse steer module's inline generator).
+  const ulid = cockpitSteer.inboxKey('_').split('/').pop();  // borrow ULID; strip prefix
+  const key = `user_todo/${input.project_id}/${ulid}`;
+  const now = Date.now();
+  const value = {
+    ts: now,
+    label: rawLabel,
+    project_id: input.project_id,
+    source: 'user',
+  };
+  try {
+    entry.db.prepare(`
+      INSERT INTO scratchpad
+        (key, value_json, value_path, task_id, expires_at, created_at, updated_at)
+      VALUES
+        (@key, @value_json, NULL, NULL, NULL, @now, @now)
+    `).run({ key, value_json: JSON.stringify(value), now });
+  } catch (e) {
+    return { ok: false, error: 'write_failed: ' + (e && e.message ? e.message : String(e)) };
+  }
+  return { ok: true, key };
+});
+
+// A2.2 — Dispatch Wire. Panel "派给 ▾" button wires into Cairn's
+// dispatch_requests kernel primitive (D9.1 tier-A, no env flag gate).
+// Writes one PENDING dispatch row + marks the scratchpad todo entry as
+// 'dispatched'. Kernel R1–R6 fallback rules run on their own cadence.
+ipcMain.handle('cockpit-todo-dispatch', (_e, input) => {
+  if (!input || typeof input !== 'object') {
+    return { ok: false, error: 'input_required' };
+  }
+  const { project_id, todo_id, source, target_agent_id, label, why } = input;
+  if (!project_id) return { ok: false, error: 'project_id_required' };
+  const proj = reg.projects.find(p => p.id === project_id);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  // Use a write handle (dispatch_requests is a mutation).
+  const wdb = openWriteDb(proj.db_path);
+  const entry = ensureDbHandle(proj.db_path);
+  const tables = entry ? entry.tables : new Set();
+  return cockpitDispatch.dispatchTodo(wdb, tables, {
+    project_id,
+    todo_id,
+    source,
+    target_agent_id,
+    label,
+    why,
+  });
+});
+
+// Cockpit redesign Phase 4 — Module 4 REWIND.
+// D9.1 tier-B mutation: caller MUST surface inline confirm dialog
+// before invoking rewindTo. Preview is safe to call unprompted.
+ipcMain.handle('cockpit-rewind-preview', (_e, input) => {
+  if (!input || !input.project_id || !input.checkpoint_id) {
+    return { ok: false, error: 'project_id_checkpoint_id_required' };
+  }
+  const proj = reg.projects.find(p => p.id === input.project_id);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  return cockpitRewind.previewRewind(entry.db, entry.tables, proj, input.checkpoint_id);
+});
+
+// Cockpit redesign Phase 6 — per-project settings + LLM helpers.
+ipcMain.handle('get-cockpit-settings', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return registry.COCKPIT_SETTINGS_DEFAULT;
+  // 2026-05-14 Q3 fix: backfill auto_ship probe for projects registered
+  // before the probe code existed. Idempotent; only runs if auto_ship
+  // is missing/half-set. Cheap (one git invocation, 2s timeout).
+  try {
+    const cur = registry.getCockpitSettings(reg, projectId);
+    if (!cur || !cur.auto_ship || cur.auto_ship.remote_url === null) {
+      const proj = reg.projects.find(p => p.id === projectId);
+      if (proj && proj.project_root) {
+        _probeAutoShip(proj.project_root, projectId);
+      }
+    }
+  } catch (_e) { /* non-fatal */
+    cairnLog.warn('main', 'cockpit_settings_probe_failed', { message: (_e && _e.message) || String(_e) });
+  }
+  return registry.getCockpitSettings(reg, projectId);
+});
+
+// 2026-05-14 Q4: one-click "ship now" — push everything in the project
+// (commit dirty changes if any + push ahead commits). Independent of
+// auto_ship.enabled; this is a manual user action via panel button.
+ipcMain.handle('mode-a-ship-now', async (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return { ok: false, error: 'project_id_required' };
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj || !proj.project_root) return { ok: false, error: 'project_not_found' };
+  // Backfill probe if needed so we have remote_url + pat_path.
+  try { _probeAutoShip(proj.project_root, projectId); } catch (_e) { cairnLog.warn('main', 'ship_now_probe_failed', { message: (_e && _e.message) || String(_e) }); }
+  const settings = registry.getCockpitSettings(reg, projectId);
+  const autoShipCfg = (settings && settings.auto_ship) || {};
+  const modeAAutoShip = require('./mode-a-auto-ship.cjs');
+  const result = modeAAutoShip.autoShip(proj.project_root, 'Manual ship via cockpit panel', {
+    patPath: autoShipCfg.pat_path || null,
+    branch: autoShipCfg.default_branch || 'main',
+    remoteUrl: autoShipCfg.remote_url || null,
+  });
+  cairnLog.info('mode-a-ship-now', 'manual_ship_result', {
+    project_id: projectId,
+    ok: !!result.ok,
+    commit_sha: result.commit_sha,
+    push_backend: result.push_backend,
+    reason: result.reason,
+    committed: result.committed,
+  });
+  return result;
+});
+
+ipcMain.handle('set-cockpit-settings', (_e, projectId, input) => {
+  if (!projectId || typeof projectId !== 'string') {
+    return { ok: false, error: 'project_id_required' };
+  }
+  // Capture prior mode before writing so we can detect the B→A flip.
+  const priorCs = registry.getCockpitSettings(reg, projectId);
+  const result = registry.setCockpitSettings(reg, projectId, input || {});
+  if (result.error) return { ok: false, error: result.error };
+  reg = result.reg;
+  // 2026-05-14: was `registry.writeRegistry(reg)` — undefined fn, silently
+  // ate by catch. Pre-existing bug, surfaced by MA-1 subagent审查.
+  try { registry.saveRegistry(reg); } catch (_e) { cairnLog.warn('main', 'set_cockpit_settings_save_failed', { message: (_e && _e.message) || String(_e) }); }
+  // Mode A v2 (CEO 2026-05-14): when the user flips from Mode B to
+  // Mode A AND a goal is already set, immediately kick the scout to
+  // draft a plan. Without this they'd be stuck on phase=idle with no
+  // plan and no obvious way to start.
+  let scoutTrig = null;
+  if (priorCs && priorCs.mode === 'B' && result.settings && result.settings.mode === 'A') {
+    try {
+      const goal = registry.getProjectGoal(reg, projectId);
+      if (goal) scoutTrig = _triggerScoutForProject(projectId);
+    } catch (_e) { cairnLog.warn('main', 'mode_b_to_a_scout_trigger_failed', { message: (_e && _e.message) || String(_e) }); }
+  }
+  return { ok: true, settings: result.settings, scout: scoutTrig };
+});
+
+ipcMain.handle('cockpit-summarize-tail', async (_e, input) => {
+  if (!input || !input.tail || !input.project_id) {
+    return { ok: false, reason: 'no_input' };
+  }
+  const settings = registry.getCockpitSettings(reg, input.project_id);
+  return llmHelpers.summarizeTail({
+    enabled: !!(settings && settings.llm_helpers && settings.llm_helpers.tail_summary_enabled),
+    run_id: input.run_id,
+    tail: input.tail,
+  });
+});
+
+ipcMain.handle('cockpit-explain-conflict', async (_e, input) => {
+  if (!input || !input.project_id) return { ok: false, reason: 'no_input' };
+  const settings = registry.getCockpitSettings(reg, input.project_id);
+  return llmHelpers.explainConflict({
+    enabled: !!(settings && settings.llm_helpers && settings.llm_helpers.conflict_explainer_enabled),
+    paths: input.paths,
+    diff_a: input.diff_a,
+    diff_b: input.diff_b,
+    summary: input.summary,
+  });
+});
+
+ipcMain.handle('cockpit-sort-inbox', async (_e, input) => {
+  if (!input || !input.project_id) return { ok: false, reason: 'no_input' };
+  const settings = registry.getCockpitSettings(reg, input.project_id);
+  return llmHelpers.sortInbox({
+    enabled: !!(settings && settings.llm_helpers && settings.llm_helpers.inbox_smart_sort_enabled),
+    items: input.items,
+    goal: input.goal,
+  });
+});
+
+ipcMain.handle('cockpit-assist-goal', async (_e, input) => {
+  if (!input || !input.project_id) return { ok: false, reason: 'no_input' };
+  const settings = registry.getCockpitSettings(reg, input.project_id);
+  return llmHelpers.assistGoal({
+    enabled: !!(settings && settings.llm_helpers && settings.llm_helpers.goal_input_assist_enabled),
+    files: input.files,
+    rough_idea: input.rough_idea,
+  });
+});
+
+// Cockpit redesign Phase 5 — Module 5 ack escalation.
+ipcMain.handle('cockpit-ack-escalation', (_e, input) => {
+  if (!input || !input.project_id || !input.escalation_id) {
+    return { ok: false, error: 'project_id_escalation_id_required' };
+  }
+  const proj = reg.projects.find(p => p.id === input.project_id);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  return mentorPolicy.ackEscalation(entry.db, input.project_id, input.escalation_id);
+});
+
+ipcMain.handle('cockpit-rewind-to', (_e, input) => {
+  if (!input || !input.project_id || !input.checkpoint_id) {
+    return { ok: false, error: 'project_id_checkpoint_id_required' };
+  }
+  const proj = reg.projects.find(p => p.id === input.project_id);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  return cockpitRewind.performRewind(entry.db, entry.tables, proj, input.checkpoint_id, {
+    skipAutoCheckpoint: !!input.skip_auto_checkpoint,
+  });
+});
+
+ipcMain.handle('select-project', (_e, projectId) => {
+  if (projectId === null) {
+    selectedProjectId = null;
+    return { ok: true, selected: null };
+  }
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: `project not found: ${projectId}` };
+  selectedProjectId = projectId;
+  // Touch last_opened_at so L1 sort can prefer recently-used.
+  reg = registry.touchProject(reg, projectId);
+  return { ok: true, selected: { id: proj.id, label: proj.label } };
+});
+
+ipcMain.handle('get-selected-project', () => {
+  const proj = activeProject();
+  return proj
+    ? { id: proj.id, label: proj.label, project_root: proj.project_root, db_path: proj.db_path, agent_id_hints: proj.agent_id_hints }
+    : null;
+});
+
+// ---------------------------------------------------------------------------
+// B4 Onboarding wizard IPC handlers
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('get-onboarded-at', () => {
+  return registry.getOnboardedAt(reg);
+});
+
+ipcMain.handle('mark-onboarded', () => {
+  reg = registry.markOnboarded(reg);
+  registry.saveRegistry(reg);
+  return { ok: true, onboarded_at: registry.getOnboardedAt(reg) };
+});
+
+ipcMain.handle('choose-project-folder', async () => {
+  const panelWin = BrowserWindow.getAllWindows().find(w => !w.isDestroyed());
+  const result = await dialog.showOpenDialog(panelWin || null, {
+    title: 'Choose your project folder',
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
+  return { ok: true, path: result.filePaths[0] };
+});
+
+ipcMain.handle('add-project', async (_e, input) => {
+  let project_root = input && typeof input.project_root === 'string' ? input.project_root : '';
+  let db_path      = input && typeof input.db_path === 'string'      ? input.db_path      : '';
+  const label      = input && typeof input.label === 'string'        ? input.label        : '';
+
+  if (!project_root) {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose project root folder',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths.length) {
+      return { ok: false, error: 'cancelled' };
+    }
+    project_root = result.filePaths[0];
+  }
+  // Canonicalize: if the chosen folder lives inside a git work tree,
+  // promote it to the toplevel so the auto-derived agent_id_hint matches
+  // the SESSION_AGENT_ID mcp-server boots with from anywhere in the tree.
+  // No-op (and silent) if git is missing, the dir isn't a repo, or the
+  // probe times out at 1s.
+  project_root = canonicalizeToGitToplevel(project_root);
+  if (!db_path) {
+    // Default: <project_root>/.cairn/cairn.db if it exists, else ~/.cairn/cairn.db
+    const local = path.join(project_root, '.cairn', 'cairn.db');
+    db_path = fs.existsSync(local) ? local : registry.DEFAULT_DB_PATH;
+  }
+
+  const result = registry.addProject(reg, { project_root, db_path, label });
+  reg = result.reg;
+  const dbEntry = ensureDbHandle(db_path); // open the handle eagerly so L1 can render
+
+  // 2026-05-14 Mode A auto-ship probe (extracted to helper so the
+  // get-cockpit-settings handler can backfill legacy projects).
+  _probeAutoShip(project_root, result.entry.id);
+
+  // ------------------------------------------------------------------
+  // Bootstrap pipeline (Phase 1 / 2026-05-14):
+  //   1. spawn `cairn install --json` → writes .mcp.json + pre-commit
+  //      hook + start-cairn-pet launchers + initial CAIRN.md scaffold
+  //   2. haiku-draft a richer CAIRN.md if a provider is configured
+  //      (replaces the scaffold from step 1 on success); always-on
+  //      fallback to scaffold so the daemon never blocks
+  //   3. if a Cairn-aware coding agent (CC / Cursor / Codex / Aider)
+  //      is attached, write a refinement request to its agent_inbox
+  //      so it can replace/keep the draft on its next poll
+  //
+  // All three steps are non-fatal: any failure surfaces in the return
+  // value but does NOT roll back the project registration. The user
+  // can re-trigger any step from the project's context menu later
+  // (post-Phase-1 work).
+  // ------------------------------------------------------------------
+
+  let bootstrap = {
+    install: null,
+    draft: null,
+    dispatch: null,
+  };
+
+  try {
+    bootstrap.install = await installBridge.runInstallInProject({ projectRoot: project_root });
+  } catch (e) {
+    bootstrap.install = { ok: false, error: 'install_bridge_threw', detail: e && e.message ? e.message : String(e) };
+  }
+
+  // Step 2: haiku draft — only attempt if the install step succeeded,
+  // otherwise the scaffold from step 1 might not exist either and we'd
+  // be writing into a project root that hasn't been set up.
+  if (bootstrap.install && bootstrap.install.ok) {
+    try {
+      const draftResult = await cairnMdDrafter.draftCairnMd({
+        projectRoot: project_root,
+        projectName: result.entry.label,
+      });
+      bootstrap.draft = {
+        ok: draftResult.ok,
+        source: draftResult.source,
+        validation_reason: draftResult.validation && draftResult.validation.reason ? draftResult.validation.reason : null,
+        written: draftResult.written,
+      };
+
+      // Step 3: dispatch refinement to attached CC if any
+      try {
+        if (dbEntry && dbEntry.db && dbEntry.tables) {
+          const cairnAware = projectQueries.findCairnAwareAgent(dbEntry.db, dbEntry.tables, project_root);
+          if (cairnAware) {
+            const dispatchResult = cairnMdDrafter.dispatchDraftRefinement(dbEntry.db, dbEntry.tables, {
+              agent_id: cairnAware.agent_id,
+              project_id: result.entry.id,
+              projectRoot: project_root,
+              haikuDraft: draftResult.content,
+            });
+            bootstrap.dispatch = {
+              ok: dispatchResult.ok,
+              agent_id: cairnAware.agent_id,
+              client: cairnAware.client,
+              key: dispatchResult.key || null,
+              error: dispatchResult.error || null,
+            };
+          } else {
+            bootstrap.dispatch = { ok: false, error: 'no_cairn_aware_agent_attached' };
+          }
+        }
+      } catch (e) {
+        bootstrap.dispatch = { ok: false, error: 'dispatch_threw', detail: e && e.message ? e.message : String(e) };
+      }
+    } catch (e) {
+      bootstrap.draft = { ok: false, error: 'drafter_threw', detail: e && e.message ? e.message : String(e) };
+    }
+  }
+
+  return { ok: true, entry: result.entry, bootstrap };
+});
+
+ipcMain.handle('remove-project', (_e, id) => {
+  if (selectedProjectId === id) selectedProjectId = null;
+  reg = registry.removeProject(reg, id);
+  gcDbHandles();
+  return { ok: true };
+});
+
+ipcMain.handle('rename-project', (_e, id, label) => {
+  reg = registry.renameProject(reg, id, label);
+  return { ok: true };
+});
+
+// Register a project entry from a Claude/Codex Unassigned row's cwd.
+//
+// Why a dedicated channel and not just add-project({ project_root, db_path }):
+//   - The starting point is a presence-row cwd we already know; the
+//     caller doesn't want a folder-picker dialog and shouldn't have to
+//     compute the canonical git-toplevel itself.
+//   - We owe the user a clear "already registered" answer when the
+//     canonical cwd matches an existing entry — silently no-op'ing
+//     would confuse, and silently duplicating would create two project
+//     cards pointing at the same tree.
+//   - Real Agent Presence attribution rule: Claude / Codex rows match
+//     by `cwd ⊆ project_root`, not by agent_id_hints. So this handler
+//     deliberately does NOT add a hint — adding one would conflate
+//     pre-v2 deterministic-id semantics with v2 capability/cwd-driven
+//     attribution. The new entry comes up with hints=[] and the next
+//     poll re-attributes Claude/Codex purely via cwd.
+ipcMain.handle('register-project-from-cwd', (_e, cwd, dbPath) => {
+  if (typeof cwd !== 'string' || !cwd.trim()) {
+    return { ok: false, error: 'cwd_required' };
+  }
+  const canonical = canonicalizeToGitToplevel(cwd);
+  if (!canonical || canonical === '(unknown)') {
+    return { ok: false, error: 'canonicalize_failed' };
+  }
+  const existing = registry.findProjectByRoot(reg, canonical);
+  if (existing) {
+    return {
+      ok: false,
+      error: 'already_registered',
+      entry: { id: existing.id, label: existing.label, project_root: existing.project_root },
+    };
+  }
+  const targetDb = (typeof dbPath === 'string' && dbPath.trim())
+    ? dbPath
+    : registry.DEFAULT_DB_PATH;
+  const baseLabel = registry.defaultLabelFor(canonical);
+  const label = registry.pickAvailableLabel(reg, baseLabel);
+
+  // hints intentionally empty — see comment above. Claude / Codex
+  // attribute via cwd, MCP via capability tags. Pre-v2 historical rows
+  // can still be attached later via "Add to project…" on a session.
+  const result = registry.addProject(reg, {
+    project_root: canonical,
+    db_path: targetDb,
+    label,
+    agent_id_hints: [],
+  });
+  reg = result.reg;
+  ensureDbHandle(targetDb); // open the read handle eagerly so L1 can render
+  return { ok: true, entry: result.entry };
+});
+
+// Project Goal (Goal Mode v1) — registry-only, no DB writes.
+//
+// Cairn does NOT decide goals. These IPC handlers persist user-authored
+// goals into ~/.cairn/projects.json. The goal becomes input to the
+// LLM Interpretation layer, but the goal itself is never inferred from
+// agent activity (PRODUCT.md §1.3 #4 / §7 principle 2).
+ipcMain.handle('get-project-goal', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return null;
+  return registry.getProjectGoal(reg, projectId);
+});
+
+/**
+ * Mode A v2 helper: kick off the scout for a project. Async — sets
+ * phase to 'planning', spawns scout in background, on completion
+ * writes plan + flips to 'plan_pending'. Caller should NOT await this
+ * (it can take minutes); IPC handlers fire-and-forget.
+ *
+ * Idempotent against repeated calls: if phase is already 'planning'
+ * we don't re-spawn (avoids dual scouts on a button mash). Caller can
+ * read phase after to decide if a scout was actually started.
+ *
+ * Returns { ok: true, scout_started: boolean, reason?: string }.
+ */
+function _triggerScoutForProject(projectId, opts) {
+  const o = opts || {};
+  try {
+    const project = (reg.projects || []).find(p => p.id === projectId);
+    if (!project) return { ok: false, error: 'project_not_found' };
+    const goal = registry.getProjectGoal(reg, projectId);
+    if (!goal) return { ok: true, scout_started: false, reason: 'no_goal' };
+    const cs = registry.getCockpitSettings(reg, projectId);
+    if (!cs || cs.mode !== 'A') return { ok: true, scout_started: false, reason: 'not_mode_a' };
+    if (cs.mode_a && cs.mode_a.phase === 'planning') {
+      return { ok: true, scout_started: false, reason: 'already_planning' };
+    }
+    // Phase → planning. Refuse on disallowed transitions (returns error).
+    const phaseRes = registry.setModeAPhase(reg, projectId, 'planning');
+    if (phaseRes.error) {
+      // Caller (e.g. running → planning during a tick) — log + bail.
+      return { ok: false, error: phaseRes.error };
+    }
+    reg = phaseRes.reg;
+    try { registry.saveRegistry(reg); } catch (_e) { cairnLog.warn('main', 'mode_a_start_registry_save_failed', { message: (_e && _e.message) || String(_e) }); }
+
+    // Get a writable DB for scout's plan write. BUG fix 2026-05-14:
+    // ensureWritableDbHandle takes a PATH string, not a project object.
+    // Passing `project` (object) used to coerce to "[object Object]" in
+    // fs.existsSync → null entry → null db → modeALoop.writePlan(null)
+    // is a silent no-op → scout's plan never landed in scratchpad.
+    // Symptom CEO hit: clicked Re-plan, scout actually drafted a clean
+    // 7-step plan via MiniMax (verified in log + ~/.cairn/worker-runs/
+    // scout-*/response.txt), but `mode_a_plan/<pid>` stayed pinned to
+    // the stale deterministic 3-step plan. Sentinel db_path normalize
+    // mirrors what mentor-tick.cjs does for the same project shape.
+    let dbPath = project.db_path;
+    if (!dbPath || dbPath === '/dev/null' || dbPath === '(unknown)') {
+      dbPath = registry.DEFAULT_DB_PATH;
+    }
+    let entry = null;
+    try { entry = ensureWritableDbHandle(dbPath); } catch (_e) { cairnLog.warn('main', 'scout_db_handle_failed', { message: (_e && _e.message) || String(_e) }); }
+    const dbHandle = entry && entry.db ? entry.db : null;
+    if (!dbHandle) {
+      // Loud failure beats silent no-op: if scout finishes successfully
+      // but can't persist, the panel stays at phase='planning' forever
+      // unless we surface the failure here.
+      try {
+        cairnLog.error('mode-a-scout', 'db_handle_missing', {
+          project_id: projectId,
+          db_path: dbPath,
+        });
+      } catch (_e) { /* cairnLog itself failed — truly nothing to do */ }
+    }
+
+    // Fire-and-forget. Errors are logged; promise can never reject
+    // because runScoutThenWritePlan resolves with { ok: false }.
+    modeAScout.runScoutThenWritePlan({
+      project,
+      goal,
+      db: dbHandle,
+      registry,
+      getReg: () => reg,
+      setReg: (r) => { reg = r; },
+      modeALoop,
+    }).catch((e) => {
+      try {
+        cairnLog.error('mode-a-scout', 'orchestrator_threw', {
+          project_id: projectId,
+          message: (e && e.message) || String(e),
+        });
+      } catch (_e) { /* cairnLog itself failed — truly nothing to do */ }
+    });
+
+    return { ok: true, scout_started: true };
+  } catch (e) {
+    return { ok: false, error: 'trigger_threw: ' + ((e && e.message) || String(e)) };
+  }
+}
+
+ipcMain.handle('set-project-goal', (_e, projectId, input) => {
+  if (!projectId || typeof projectId !== 'string') {
+    return { ok: false, error: 'projectId_required' };
+  }
+  const result = registry.setProjectGoal(reg, projectId, input || {});
+  if (result.error) return { ok: false, error: result.error };
+  reg = result.reg;
+  // Mode A v2: if goal changes while mode === 'A', re-fire scout so the
+  // plan is rebuilt against the new goal content. Goal_id rotation
+  // (registry.cjs fingerprint logic) already invalidated the old plan;
+  // scout draft populates the new one. Idempotent against concurrent
+  // edits — if scout is already running, this is a no-op.
+  try {
+    const cs = registry.getCockpitSettings(reg, projectId);
+    if (cs && cs.mode === 'A') {
+      const trig = _triggerScoutForProject(projectId);
+      return { ok: true, goal: result.goal, scout: trig };
+    }
+  } catch (_e) { cairnLog.warn('main', 'set_goal_scout_trigger_failed', { message: (_e && _e.message) || String(_e) }); }
+  return { ok: true, goal: result.goal };
+});
+
+/**
+ * Mode A v2 control surface (CEO 2026-05-14): the panel sidebar exposes
+ * Start / Stop / Re-plan against this IPC. Each handler is a thin
+ * registry mutation + (for Start / Re-plan) optional scout kick.
+ *
+ * All three are tier-1 mutations (registry write only — no project
+ * filesystem writes), so PRODUCT.md §12 D9.1 still holds.
+ */
+ipcMain.handle('mode-a-start', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return { ok: false, error: 'projectId_required' };
+  const res = registry.setModeAPhase(reg, projectId, 'running');
+  if (res.error) return { ok: false, error: res.error };
+  reg = res.reg;
+  try { registry.saveRegistry(reg); } catch (_e) { cairnLog.warn('main', 'mode_a_start_save_failed', { message: (_e && _e.message) || String(_e) }); }
+  // Kick mentor-tick immediately so the first execution spawn doesn't
+  // wait 30s for the next interval fire.
+  try { mentorTick.runOnce({ get reg() { return reg; }, ensureDbHandle: ensureWritableDbHandle, projectQueries, mentorPolicy, registry }); } catch (_e) { cairnLog.warn('main', 'mentor_tick_runonce_failed', { message: (_e && _e.message) || String(_e) }); }
+  return { ok: true, settings: res.settings };
+});
+
+ipcMain.handle('mode-a-stop', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return { ok: false, error: 'projectId_required' };
+  const cs = registry.getCockpitSettings(reg, projectId);
+  // Map current phase → most sensible "stopped" target. running → paused
+  // (resumable). plan_pending → idle (cancelled before start). paused
+  // and idle are no-ops.
+  let target;
+  if (cs.mode_a && cs.mode_a.phase === 'running') target = 'paused';
+  else if (cs.mode_a && cs.mode_a.phase === 'plan_pending') target = 'idle';
+  else if (cs.mode_a && cs.mode_a.phase === 'planning') target = 'idle';
+  else return { ok: true, settings: cs, no_op: true };
+  const res = registry.setModeAPhase(reg, projectId, target);
+  if (res.error) return { ok: false, error: res.error };
+  reg = res.reg;
+  try { registry.saveRegistry(reg); } catch (_e) { cairnLog.warn('main', 'mode_a_stop_save_failed', { message: (_e && _e.message) || String(_e) }); }
+  return { ok: true, settings: res.settings };
+});
+
+ipcMain.handle('mode-a-replan', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return { ok: false, error: 'projectId_required' };
+  return _triggerScoutForProject(projectId);
+});
+
+// Project Rules — registry-only governance layer.
+//
+// Cairn does not enforce rules; they're advisory inputs to Pre-PR
+// Gate / Interpretation / Goal Loop Prompt Pack. setProjectRules
+// rejects an all-empty payload (use clear-project-rules instead) so
+// "" never silently overwrites a real ruleset.
+ipcMain.handle('get-project-rules', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return null;
+  return registry.getProjectRules(reg, projectId);
+});
+
+ipcMain.handle('get-effective-project-rules', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return null;
+  return registry.getEffectiveProjectRules(reg, projectId);
+});
+
+ipcMain.handle('set-project-rules', (_e, projectId, input) => {
+  if (!projectId || typeof projectId !== 'string') {
+    return { ok: false, error: 'projectId_required' };
+  }
+  const result = registry.setProjectRules(reg, projectId, input || {});
+  if (result.error) return { ok: false, error: result.error };
+  reg = result.reg;
+  return { ok: true, rules: result.rules };
+});
+
+ipcMain.handle('clear-project-rules', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') {
+    return { ok: false, error: 'projectId_required' };
+  }
+  const result = registry.clearProjectRules(reg, projectId);
+  reg = result.reg;
+  return { ok: true, cleared: result.cleared };
+});
+
+ipcMain.handle('clear-project-goal', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') {
+    return { ok: false, error: 'projectId_required' };
+  }
+  const result = registry.clearProjectGoal(reg, projectId);
+  reg = result.reg;
+  return { ok: true, cleared: result.cleared };
+});
+
+ipcMain.handle('add-hint', (_e, id, agentId) => {
+  if (!agentId || typeof agentId !== 'string') return { ok: false, error: 'invalid agent_id' };
+  const proj = reg.projects.find(p => p.id === id);
+  if (!proj) return { ok: false, error: `project not found: ${id}` };
+  const already = proj.agent_id_hints.includes(agentId);
+  reg = registry.addHint(reg, id, agentId);
+  return { ok: true, already };
+});
+
+// L2 Sessions tab — presence rows attributed to the active project.
+//
+// Composition (Real Agent Presence step 2, 2026-05-08):
+//   1. MCP rows from Cairn's `processes` table, filtered by hints ∪
+//      capability matches (project-queries.cjs).
+//   2. Claude Code session-file rows from ~/.claude/sessions/<pid>.json,
+//      filtered by `cwd ⊆ project_root` (claude-code-session-scan.cjs).
+// Both flows are read-only. MCP rows keep their existing schema; Claude
+// rows carry a `source: "claude-code/session-file"` tag so the renderer
+// can pick the right row template. We do NOT write Claude rows into the
+// processes table — that would be a fake heartbeat the daemon never
+// asked for, and it would survive past the Claude session's lifetime.
+ipcMain.handle('get-project-sessions', () => {
+  const proj = activeProject();
+  if (!proj) return {
+    available: false, sessions: [],
+    activities: [], activity_summary: agentActivity.summarizeActivities([]),
+    ts: Math.floor(Date.now() / 1000),
+  };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return {
+    available: false, sessions: [],
+    activities: [], activity_summary: agentActivity.summarizeActivities([]),
+    ts: Math.floor(Date.now() / 1000),
+  };
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const mcp = projectQueries.queryProjectScopedSessions(entry.db, entry.tables, agentIds);
+
+  // Claude Code: scan host-level session files, attribute by cwd.
+  const claudeAll = claudeSessionScan.scanClaudeSessions();
+  const { matched: claudeForProject } = claudeSessionScan.partitionByProject(claudeAll, proj);
+
+  // Codex CLI / Codex Desktop: same model — host-level rollout files,
+  // attribute by cwd. Status semantics differ (recent / inactive /
+  // unknown) so the renderer keeps the two sources visually distinct.
+  const codexAll = codexSessionScan.scanCodexSessions();
+  const { matched: codexForProject } = codexSessionScan.partitionByProject(codexAll, proj);
+
+  // Activity layer: build the unified row list. mcp.sessions rows get
+  // tagged with `_attribution` first so each AgentActivity carries
+  // attribution = "capability" | "hint".
+  const hints = (proj && proj.agent_id_hints) || [];
+  for (const row of mcp.sessions) {
+    row._attribution = agentActivity.decideMcpAttribution(
+      row.capabilities, proj.project_root, hints, row.agent_id,
+    );
+  }
+  const built = agentActivity.buildProjectActivities(
+    proj, mcp.sessions, claudeAll, codexAll,
+    { claude: claudeSessionScan, codex: codexSessionScan, db: entry.db },
+  );
+
+  return {
+    available: mcp.available || claudeAll.length > 0 || codexAll.length > 0,
+    ts: mcp.ts,
+    // Legacy per-source fields kept populated for any reader that hasn't
+    // migrated to `activities`. The renderer now consumes `activities`
+    // as the canonical view; per-source rows remain reachable via
+    // detail.expanded breakdown.
+    sessions: mcp.sessions,
+    claude_sessions: claudeForProject,
+    codex_sessions:  codexForProject,
+    // Unified activity view — the canonical Sessions tab feed.
+    activities: built.activities,
+    activity_summary: built.summary,
+  };
+});
+
+// Unassigned drill-down — keyed by db_path so a user inspecting one DB's
+// Unassigned bucket gets a stable view regardless of which project is
+// currently selected for L2.
+ipcMain.handle('get-unassigned-detail', (_e, dbPath) => {
+  if (!dbPath || typeof dbPath !== 'string') return null;
+  const entry = ensureDbHandle(dbPath);
+  if (!entry) return null;
+  const attributed = projectQueries.resolveAttributedAgentIdsForDb(
+    entry.db, entry.tables, reg.projects, dbPath,
+  );
+  const detail = projectQueries.queryUnassignedDetail(entry.db, entry.tables, dbPath, attributed);
+
+  // Claude Code: surface sessions whose cwd is in NO registered project.
+  // This is global (not per-db) so we only attach when the user is on
+  // the *first* Unassigned card — otherwise duplicate cards on multi-DB
+  // setups would each show the same Claude rows. Heuristic: attach to
+  // the bucket whose db_path equals the first registry db_path, or the
+  // single bucket when there is only one. Day-1 simplification; the
+  // panel doesn't yet model "Claude sessions are not really a per-DB
+  // thing" but this avoids duplication today.
+  const claudeAll = claudeSessionScan.scanClaudeSessions();
+  const claudeUnassigned = claudeSessionScan.unassignedClaudeSessions(claudeAll, reg.projects);
+  const codexAll = codexSessionScan.scanCodexSessions();
+  const codexUnassigned = codexSessionScan.unassignedCodexSessions(codexAll, reg.projects);
+  const dbPaths = registry.uniqueDbPaths(reg);
+  const isPrimaryBucket = dbPaths.length === 0
+    || dbPaths[0] === dbPath;
+  detail.claude_sessions = isPrimaryBucket ? claudeUnassigned : [];
+  detail.codex_sessions  = isPrimaryBucket ? codexUnassigned  : [];
+
+  // Activity layer for the Unassigned bucket. MCP rows are
+  // detail.agents (queryUnassignedDetail already filtered to unassigned
+  // agent_ids); we tag them with attribution=null and feed them
+  // through buildUnassignedActivities together with the claude/codex
+  // rows for THIS bucket only (multi-DB de-dup is already enforced
+  // above by the isPrimaryBucket gate).
+  for (const row of detail.agents) row._attribution = null;
+  const built = agentActivity.buildUnassignedActivities(
+    detail.agents,
+    isPrimaryBucket ? claudeUnassigned : [],
+    isPrimaryBucket ? codexUnassigned  : [],
+    entry.db,
+  );
+  detail.activities = built.activities;
+  detail.activity_summary = built.summary;
+  return detail;
+});
+
+// ---------------------------------------------------------------------------
+// IPC — panel views (legacy + Quick-Slice; route through active project)
+// ---------------------------------------------------------------------------
+//
+// These channels don't take a projectId and continue working as in
+// Quick Slice. They route to the active project's db_path (or default
+// if no project selected). For project-scoped summary they apply the
+// active project's hints; for Run Log / Tasks they currently return
+// DB-wide data (per-project filtering for those is Day 3+ work).
+
+// ---------------------------------------------------------------------------
+// Goal Interpretation — advisory LLM layer (Goal Mode v1)
+// ---------------------------------------------------------------------------
+//
+// In-memory cache so the panel's 1s poll doesn't hammer the provider.
+// `get-goal-interpretation` returns the cached value (or null);
+// `refresh-goal-interpretation` is the only path that actually calls
+// the LLM. Cache lives only in this process — never persisted.
+
+/** @type {Map<string, { result: object, generated_at: number }>} */
+const interpretationCache = new Map();
+const INTERPRETATION_CACHE_TTL_MS = 5 * 60 * 1000; // best-effort, not load-bearing
+
+function buildInterpretationInput(proj, entry, agentIds) {
+  const summary = projectQueries.queryProjectScopedSummary(
+    entry.db, entry.tables, proj.db_path, agentIds,
+  );
+  const claudeAll = claudeSessionScan.scanClaudeSessions();
+  const codexAll  = codexSessionScan.scanCodexSessions();
+  const { matched: claudeForP } = claudeSessionScan.partitionByProject(claudeAll, proj);
+  const { matched: codexForP }  = codexSessionScan.partitionByProject(codexAll, proj);
+  foldClaudeIntoSummary(summary, claudeForP);
+  foldCodexIntoSummary(summary, codexForP);
+  const mcpForActivity = buildMcpActivityRows(entry.db, entry.tables, proj, agentIds);
+  const built = agentActivity.buildProjectActivities(
+    proj, mcpForActivity, claudeAll, codexAll,
+    { claude: claudeSessionScan, codex: codexSessionScan, db: entry.db },
+  );
+  summary.agent_activity = built.summary;
+
+  const pulse = goalSignals.deriveProjectPulse(summary, built.activities, {});
+  const goal = registry.getProjectGoal(reg, proj.id);
+  // Worker Reports — only counts/titles flow through; LLM never
+  // sees the report body via the interpretation path (the privacy
+  // boundary is in goal-interpretation.cjs::buildCompactState).
+  const recentReports = workerReports.listWorkerReports(proj.id, 5);
+  // Project rules (governance v1) — effective ruleset (user-set or
+  // default). buildCompactState produces a `rules_summary` envelope
+  // that's safe to send to the LLM (counts + top items + non_goals,
+  // capped widths).
+  const effRules = registry.getEffectiveProjectRules(reg, proj.id);
+
+  return {
+    goal,
+    pulse,
+    activity_summary: built.summary,
+    top_activities: built.activities.slice(0, 6),
+    tasks_summary: {
+      running:        summary.tasks_running,
+      blocked:        summary.tasks_blocked,
+      waiting_review: summary.tasks_waiting_review,
+      failed:         summary.tasks_failed,
+      done:           0, // not currently tracked in summary
+    },
+    blockers_summary: { open: summary.blockers_open },
+    outcomes_summary: {
+      failed:  summary.outcomes_failed,
+      pending: summary.outcomes_pending,
+    },
+    checkpoints_summary: null, // not in summary; left null for v1
+    recent_reports: recentReports,
+    project_rules: effRules.rules,
+    project_rules_is_default: effRules.is_default,
+  };
+}
+
+ipcMain.handle('get-goal-interpretation', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return null;
+  const cached = interpretationCache.get(projectId);
+  if (cached && (Date.now() - cached.generated_at) < INTERPRETATION_CACHE_TTL_MS) {
+    return cached.result;
+  }
+  return cached ? cached.result : null; // stale cache is OK; refresh is explicit
+});
+
+ipcMain.handle('refresh-goal-interpretation', async (_e, projectId, opts) => {
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const input = buildInterpretationInput(proj, entry, agentIds);
+  const force = !!(opts && opts.forceDeterministic);
+  const result = await goalInterpretation.interpretGoal(input, {
+    forceDeterministic: force,
+  });
+  interpretationCache.set(projectId, {
+    result,
+    generated_at: Date.now(),
+  });
+  return { ok: true, result };
+});
+
+// Provider describe-self (NEVER includes the api key).
+ipcMain.handle('get-llm-provider-info', () => {
+  return llmClient.describeProvider(llmClient.loadProvider());
+});
+
+// ---------------------------------------------------------------------------
+// Worker Reports (Phase 3)
+// ---------------------------------------------------------------------------
+//
+// Local, append-only, project-scoped. Storage lives at
+// ~/.cairn/project-reports/<projectId>.jsonl. Cairn does NOT auto-
+// extract reports from running agent transcripts; the user (or a
+// friendly agent that already produced a structured summary) drops
+// reports in via this IPC. The Goal Interpretation layer only ever
+// sees title + counts (see goal-interpretation.cjs::buildCompactState).
+
+ipcMain.handle('add-worker-report', (_e, projectId, input) => {
+  const o = (input && typeof input === 'object') ? input : {};
+  // Optional pre-parse: caller may pass `text` instead of structured
+  // fields. parseReportText handles common markdown layouts.
+  let parsed = null;
+  if (typeof o.text === 'string' && o.text.trim()) {
+    parsed = workerReports.parseReportText(o.text);
+  }
+  const merged = Object.assign({}, parsed || {}, {
+    title:            o.title            || (parsed && parsed.title)            || '',
+    source_app:       o.source_app       || (parsed && parsed.source_app)       || '',
+    session_id:       o.session_id       || (parsed && parsed.session_id)       || null,
+    agent_id:         o.agent_id         || (parsed && parsed.agent_id)         || null,
+    completed:        o.completed        || (parsed && parsed.completed)        || [],
+    remaining:        o.remaining        || (parsed && parsed.remaining)        || [],
+    blockers:         o.blockers         || (parsed && parsed.blockers)         || [],
+    next_steps:       o.next_steps       || (parsed && parsed.next_steps)       || [],
+    needs_human:      typeof o.needs_human === 'boolean' ? o.needs_human
+                      : (parsed ? parsed.needs_human : false),
+    related_task_ids: o.related_task_ids || (parsed && parsed.related_task_ids) || [],
+  });
+  return workerReports.addWorkerReport(projectId, merged);
+});
+
+ipcMain.handle('list-worker-reports', (_e, projectId, limit) => {
+  return workerReports.listWorkerReports(projectId, limit);
+});
+
+ipcMain.handle('clear-worker-reports', (_e, projectId) => {
+  return workerReports.clearWorkerReports(projectId);
+});
+
+// ---------------------------------------------------------------------------
+// Pre-PR Gate (advisory only)
+// ---------------------------------------------------------------------------
+//
+// Reuses the buildInterpretationInput pipeline + adds a `summary`
+// field for the gate's deterministic rules. Cached the same way as
+// goal interpretation: get-* returns the cached value (or null);
+// refresh-* is the only path that actually evaluates / calls LLM.
+
+/** @type {Map<string, { result: object, generated_at: number }>} */
+const prePrGateCache = new Map();
+
+function buildPrePrGateInput(proj, entry, agentIds) {
+  // Same shape as buildInterpretationInput — the gate consumes
+  // goal + pulse + activity_summary + recent_reports + a flat
+  // summary field (counts) + project_rules (governance v1).
+  const interpInput = buildInterpretationInput(proj, entry, agentIds);
+  const summary = projectQueries.queryProjectScopedSummary(
+    entry.db, entry.tables, proj.db_path, agentIds,
+  );
+  // Effective rules: user-set if present, else the default ruleset.
+  // The is_default flag tells the gate to tag default-derived
+  // checklist items with " [default]" so the user can see what's
+  // theirs vs the floor.
+  const effRules = registry.getEffectiveProjectRules(reg, proj.id);
+  return Object.assign({}, interpInput, {
+    summary,
+    project_rules: effRules.rules,
+    project_rules_is_default: effRules.is_default,
+  });
+}
+
+ipcMain.handle('get-pre-pr-gate', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return null;
+  const cached = prePrGateCache.get(projectId);
+  return cached ? cached.result : null;
+});
+
+ipcMain.handle('refresh-pre-pr-gate', async (_e, projectId, opts) => {
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const input = buildPrePrGateInput(proj, entry, agentIds);
+  const force = !!(opts && opts.forceDeterministic);
+  const result = await prePrGate.evaluatePrePrGate(input, {
+    forceDeterministic: force,
+  });
+  prePrGateCache.set(projectId, {
+    result,
+    generated_at: Date.now(),
+  });
+  return { ok: true, result };
+});
+
+// ---------------------------------------------------------------------------
+// Goal Loop Prompt Pack — copy-pasteable next-round prompt
+// ---------------------------------------------------------------------------
+//
+// User clicks "Generate next worker prompt" in the panel; we build a
+// pack from current state and (optionally) ask the LLM to rephrase
+// non-binding sections. Cairn never sends the prompt to an agent —
+// the user copies it themselves.
+
+/** @type {Map<string, { result: object, generated_at: number }>} */
+const promptPackCache = new Map();
+
+ipcMain.handle('get-prompt-pack', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return null;
+  const cached = promptPackCache.get(projectId);
+  return cached ? cached.result : null;
+});
+
+// ---------------------------------------------------------------------------
+// Recovery surface (UI hardening — checkpoint visibility)
+// ---------------------------------------------------------------------------
+//
+// Read-only — uses queryProjectScopedCheckpoints against the existing
+// `checkpoints` table; no writes. The card is the first time the
+// panel exposes Cairn's checkpoint primitive to the user. Per
+// PRODUCT.md §1.3 #4 the panel does not execute rewind; users get
+// "copy recovery prompt" only.
+
+// ---------------------------------------------------------------------------
+// Handoff (scratchpad) + Conflict surface (Coordination Surface Pass)
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('get-project-scratchpad', (_e, projectId, limit) => {
+  if (!projectId || typeof projectId !== 'string') return [];
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return [];
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return [];
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  return projectQueries.queryProjectScopedScratchpad(
+    entry.db, entry.tables, agentIds, limit || 30,
+  );
+});
+
+ipcMain.handle('get-project-conflicts', (_e, projectId, limit) => {
+  if (!projectId || typeof projectId !== 'string') return [];
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return [];
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return [];
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  return projectQueries.queryProjectScopedConflicts(
+    entry.db, entry.tables, agentIds, limit || 30,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Coordination signals — derived view for the panel + prompt pack
+// ---------------------------------------------------------------------------
+
+function buildCoordinationInput(proj, entry, agentIds) {
+  const summary = projectQueries.queryProjectScopedSummary(
+    entry.db, entry.tables, proj.db_path, agentIds,
+  );
+  const claudeAll = claudeSessionScan.scanClaudeSessions();
+  const codexAll  = codexSessionScan.scanCodexSessions();
+  const sess = projectQueries.queryProjectScopedSessions(entry.db, entry.tables, agentIds);
+  for (const r of sess.sessions) {
+    r._attribution = agentActivity.decideMcpAttribution(
+      r.capabilities, proj.project_root, proj.agent_id_hints || [], r.agent_id,
+    );
+  }
+  const built = agentActivity.buildProjectActivities(
+    proj, sess.sessions, claudeAll, codexAll,
+    { claude: claudeSessionScan, codex: codexSessionScan, db: entry.db },
+  );
+  summary.agent_activity = built.summary;
+  const tasksPayload   = projectQueries.queryProjectScopedTasks(entry.db, entry.tables, agentIds);
+  const blockers       = projectQueries.queryProjectScopedBlockers(entry.db, entry.tables, agentIds, 50);
+  const outcomes       = projectQueries.queryProjectScopedOutcomes(entry.db, entry.tables, agentIds, 50);
+  const checkpoints    = projectQueries.queryProjectScopedCheckpoints(entry.db, entry.tables, agentIds, 50);
+  const scratchpad     = projectQueries.queryProjectScopedScratchpad(entry.db, entry.tables, agentIds, 30);
+  const conflicts      = projectQueries.queryProjectScopedConflicts(entry.db, entry.tables, agentIds, 30);
+  const recentReports  = workerReports.listWorkerReports(proj.id, 5);
+  const goal           = registry.getProjectGoal(reg, proj.id);
+  const effRules       = registry.getEffectiveProjectRules(reg, proj.id);
+
+  return {
+    activities: built.activities,
+    summary,
+    tasks: tasksPayload.tasks,
+    blockers,
+    outcomes,
+    checkpoints,
+    scratchpad,
+    conflicts,
+    recent_reports: recentReports,
+    goal,
+    project_rules: effRules.rules,
+    project_rules_is_default: effRules.is_default,
+  };
+}
+
+ipcMain.handle('get-coordination-signals', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return null;
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return null;
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return null;
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const input = buildCoordinationInput(proj, entry, agentIds);
+  return coordinationSignals.deriveCoordinationSignals(input, {});
+});
+
+ipcMain.handle('get-handoff-prompt', (_e, projectId, opts) => {
+  if (!projectId || typeof projectId !== 'string') return { ok: false, error: 'projectId_required' };
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const o = opts || {};
+  const taskId = typeof o.task_id === 'string' ? o.task_id : null;
+  const includeContext = !!o.include_context;
+  const ckpts = projectQueries.queryProjectScopedCheckpoints(entry.db, entry.tables, agentIds, 50);
+  const scratchpad = projectQueries.queryProjectScopedScratchpad(entry.db, entry.tables, agentIds, 20);
+  const reports = workerReports.listWorkerReports(proj.id, 3);
+  const tasks = projectQueries.queryProjectScopedTasks(entry.db, entry.tables, agentIds).tasks;
+  const targetTask = taskId ? tasks.find(t => t.task_id === taskId) : null;
+  const prompt = coordinationSignals.handoffPromptText
+    ? coordinationSignals.handoffPromptText(/* unused */)
+    : null; // legacy guard; the actual builder lives below
+  // We compose the handoff prompt inline (rather than in
+  // coordination-signals.cjs) because it pulls from project state and
+  // is intentionally the panel's job, not a pure-derivation module's.
+  return {
+    ok: true,
+    prompt: composeHandoffPrompt({
+      project_label: proj.label,
+      goal: registry.getProjectGoal(reg, proj.id),
+      target_task: targetTask,
+      latest_checkpoints: ckpts.slice(0, 3),
+      latest_scratchpad: includeContext ? scratchpad.slice(0, 5) : [],
+      recent_reports: reports.slice(0, 2),
+      include_full_context: includeContext,
+    }),
+  };
+});
+
+ipcMain.handle('get-conflict-prompt', (_e, projectId, conflictId) => {
+  if (!projectId || typeof projectId !== 'string') return { ok: false, error: 'projectId_required' };
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const conflicts = projectQueries.queryProjectScopedConflicts(entry.db, entry.tables, agentIds, 50);
+  const target = conflictId ? conflicts.find(c => c.id === conflictId) : conflicts.find(c => c.status === 'OPEN' || c.status === 'PENDING_REVIEW');
+  if (!target) return { ok: false, error: 'no_conflict_found' };
+  return {
+    ok: true,
+    prompt: composeConflictPrompt({ project_label: proj.label, conflict: target }),
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Handoff + Conflict prompt composers (panel-side; advisory)
+// ---------------------------------------------------------------------------
+//
+// Kept inline in main.cjs because they pull from registry / queries
+// (not pure-derivation friendly) and they MUST stay out of any LLM
+// payload — the templates explicitly forbid auto-execute / push.
+
+function _clip(s, max) {
+  if (typeof s !== 'string') return '';
+  const t = s.trim();
+  return t.length > max ? t.slice(0, max) : t;
+}
+
+function composeHandoffPrompt(input) {
+  const o = input || {};
+  const lines = [];
+  const projectLabel = _clip(o.project_label, 200) || '(this project)';
+  lines.push(`You are a coding agent picking up where a previous agent left off in ${projectLabel}.`);
+  lines.push(`Cairn is a project control surface (read-only); it does NOT dispatch you. The user is asking you to take over.`);
+  lines.push('');
+
+  if (o.goal && o.goal.title) {
+    lines.push('# Project goal');
+    lines.push(`Goal: ${_clip(o.goal.title, 200)}`);
+    if (o.goal.desired_outcome) lines.push(`Desired outcome: ${_clip(o.goal.desired_outcome, 400)}`);
+    lines.push('');
+  }
+
+  if (o.target_task) {
+    const t = o.target_task;
+    lines.push('# Task to continue');
+    lines.push(`- task id:     ${t.task_id}`);
+    lines.push(`- intent:      ${_clip(t.intent, 200) || '(no intent recorded)'}`);
+    lines.push(`- state:       ${t.state}`);
+    if (t.created_by_agent_id) lines.push(`- previous agent: ${t.created_by_agent_id}`);
+    lines.push(`- blockers (open/total): ${t.blockers_open || 0} / ${t.blockers_total || 0}`);
+    if (t.outcome_status) lines.push(`- outcome:     ${t.outcome_status}`);
+    if (t.checkpoints_total) lines.push(`- checkpoints: ${t.checkpoints_total}`);
+    lines.push('');
+  } else {
+    lines.push('# Task to continue');
+    lines.push('(No specific task selected — pick the next attention candidate from Cairn\'s coordination signals.)');
+    lines.push('');
+  }
+
+  if (Array.isArray(o.latest_checkpoints) && o.latest_checkpoints.length) {
+    lines.push('# Recovery anchors');
+    for (const c of o.latest_checkpoints) {
+      const idShort = (c.id || '').slice(0, 12);
+      const labelPart = c.label ? ` "${_clip(c.label, 80)}"` : '';
+      const headPart  = c.git_head ? ` @${String(c.git_head).slice(0, 7)}` : '';
+      lines.push(`- ${idShort}${labelPart} (${c.snapshot_status || '?'})${headPart}`);
+    }
+    lines.push('');
+  }
+
+  if (Array.isArray(o.latest_scratchpad) && o.latest_scratchpad.length) {
+    lines.push('# Shared context (scratchpad keys)');
+    for (const sp of o.latest_scratchpad) {
+      const keyPart = _clip(sp.key, 80);
+      const taskPart = sp.task_id ? ` (task ${sp.task_id})` : '';
+      const sizePart = sp.value_size ? ` — ${sp.value_size}B` : '';
+      lines.push(`- ${keyPart}${taskPart}${sizePart}`);
+      if (o.include_full_context && sp.value_preview) {
+        // Indent the preview lines so they're visually grouped under
+        // the key. Preview is already capped to 240 chars by the query.
+        for (const l of sp.value_preview.split(/\r?\n/).slice(0, 3)) {
+          lines.push(`    > ${_clip(l, 200)}`);
+        }
+      }
+    }
+    if (!o.include_full_context) {
+      lines.push('(Use Cairn cairn.scratchpad.read tool to fetch full content.)');
+    }
+    lines.push('');
+  }
+
+  if (Array.isArray(o.recent_reports) && o.recent_reports.length) {
+    lines.push('# Recent worker reports (counts only)');
+    for (const r of o.recent_reports) {
+      lines.push(`- "${_clip(r.title, 120)}": ${(r.completed || []).length} done · ${(r.remaining || []).length} remaining · ${(r.blockers || []).length} blockers${r.needs_human ? ' · needs_human' : ''}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('# What to do');
+  lines.push('1. Read the recovery anchors and shared scratchpad keys to understand what the previous agent left.');
+  lines.push('2. Confirm the next concrete step with the user before executing — do not infer scope from transcripts.');
+  lines.push('3. Produce a worker report at the end (completed / remaining / blockers / next_steps).');
+  lines.push('');
+  lines.push('# Hard rules');
+  lines.push('- Do not push, merge, or force any branch unless the user explicitly authorizes.');
+  lines.push('- Do not expand scope beyond the original goal\'s success criteria.');
+  lines.push('- Do not execute rewind without first showing the preview to the user (if a rewind is being considered).');
+  lines.push('- Cairn does not dispatch agents. You were not auto-assigned; the user pasted this prompt to you.');
+
+  return lines.join('\n');
+}
+
+function composeConflictPrompt(input) {
+  const o = input || {};
+  const c = o.conflict || null;
+  const projectLabel = _clip(o.project_label, 200) || '(this project)';
+  const lines = [];
+  lines.push(`You are a coding agent reviewing a multi-agent conflict in ${projectLabel}.`);
+  lines.push(`Cairn is a project control surface (read-only); it does NOT resolve conflicts. The user is asking you to inspect and recommend.`);
+  lines.push('');
+  if (!c) {
+    lines.push('# Conflict');
+    lines.push('No conflict provided. Refuse to inspect without one.');
+  } else {
+    lines.push('# Conflict');
+    lines.push(`- id:     ${c.id}`);
+    lines.push(`- type:   ${c.conflict_type}`);
+    lines.push(`- status: ${c.status}`);
+    lines.push(`- detected: ${c.detected_at ? new Date(c.detected_at).toISOString() : '?'}`);
+    lines.push(`- agent_a: ${c.agent_a}`);
+    if (c.agent_b) lines.push(`- agent_b: ${c.agent_b}`);
+    if (c.summary) lines.push(`- summary: ${_clip(c.summary, 400)}`);
+    if (Array.isArray(c.paths) && c.paths.length) {
+      lines.push('- paths:');
+      for (const p of c.paths.slice(0, 12)) lines.push(`    - ${_clip(p, 200)}`);
+    }
+    lines.push('');
+  }
+  lines.push('# What to do');
+  lines.push('1. Inspect each affected path. Diff the two agents\' versions if both present.');
+  lines.push('2. Identify the root cause (concurrent write / overlapping intent / state mismatch).');
+  lines.push('3. Recommend a resolution to the USER. Do NOT resolve, merge, or force-push the conflict yourself.');
+  lines.push('4. If the resolution requires choosing one agent\'s output over the other, ask the user which to keep.');
+  lines.push('');
+  lines.push('# Hard rules');
+  lines.push('- Do not push, merge, or force any branch unless the user explicitly authorizes.');
+  lines.push('- Do not modify Cairn\'s conflict state from your end (Cairn marks RESOLVED via its own tools, not via you).');
+  lines.push('- Do not silently pick a side; surface the trade-off to the user.');
+  return lines.join('\n');
+}
+
+function composeReviewPrompt(input) {
+  const o = input || {};
+  const projectLabel = _clip(o.project_label, 200) || '(this project)';
+  const t = o.target_task || null;
+  const oc = o.outcome || null;
+  const lines = [];
+  lines.push(`You are a coding agent reviewing a Cairn task for ${projectLabel}.`);
+  lines.push('Cairn is a project control surface (read-only); it does NOT decide PASS / FAIL / RETRY. Your role is to report what you see and recommend a verdict to the user.');
+  lines.push('');
+  if (t) {
+    lines.push('# Task');
+    lines.push(`- task id:     ${t.task_id}`);
+    lines.push(`- intent:      ${_clip(t.intent, 200) || '(no intent)'}`);
+    lines.push(`- state:       ${t.state}`);
+  }
+  if (oc) {
+    lines.push('');
+    lines.push('# Outcome');
+    lines.push(`- status: ${oc.status}`);
+    if (oc.evaluation_summary) lines.push(`- last evaluation: ${_clip(oc.evaluation_summary, 400)}`);
+  }
+  lines.push('');
+  lines.push('# What to do');
+  lines.push('1. Inspect the task\'s diff / files / acceptance criteria.');
+  lines.push('2. Verify against the project\'s testing policy.');
+  lines.push('3. Report PASS / FAIL with evidence to the user. Do NOT mark the outcome yourself.');
+  lines.push('');
+  lines.push('# Hard rules');
+  lines.push('- Do not push, merge, or force any branch unless the user explicitly authorizes.');
+  lines.push('- Do not change the outcome record in Cairn from your end.');
+  return lines.join('\n');
+}
+
+ipcMain.handle('get-review-prompt', (_e, projectId, taskId) => {
+  if (!projectId || typeof projectId !== 'string') return { ok: false, error: 'projectId_required' };
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const tasks = projectQueries.queryProjectScopedTasks(entry.db, entry.tables, agentIds).tasks;
+  const target = taskId ? tasks.find(t => t.task_id === taskId) : null;
+  let outcome = null;
+  if (target) {
+    const detail = queries.queryTaskDetail(entry.db, entry.tables, target.task_id);
+    outcome = detail && detail.outcome ? detail.outcome : null;
+  }
+  return {
+    ok: true,
+    prompt: composeReviewPrompt({
+      project_label: proj.label, target_task: target, outcome,
+    }),
+  };
+});
+
+ipcMain.handle('get-project-recovery', (_e, projectId) => {
+  if (!projectId || typeof projectId !== 'string') return null;
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return null;
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return null;
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const ckpts = projectQueries.queryProjectScopedCheckpoints(
+    entry.db, entry.tables, agentIds, 50,
+  );
+  return recoverySummary.deriveProjectRecovery(ckpts, {});
+});
+
+ipcMain.handle('get-recovery-prompt', (_e, projectId, opts) => {
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+
+  const o = opts || {};
+  if (o.task_id) {
+    // Per-task recovery prompt: fetch this task's checkpoints + state.
+    const ckpts = queries.queryTaskCheckpoints(entry.db, entry.tables, o.task_id);
+    const detail = queries.queryTaskDetail(entry.db, entry.tables, o.task_id);
+    const taskRow = detail && detail.task;
+    const summary = recoverySummary.deriveProjectRecovery(
+      // Wrap the task's checkpoints as if they were project-scoped so
+      // the helper picks the latest READY one if any.
+      ckpts.map(c => Object.assign({}, c, {
+        task_id: o.task_id,
+        task_intent: taskRow ? taskRow.intent : null,
+        task_state:  taskRow ? taskRow.state  : null,
+      })),
+      {},
+    );
+    const prompt = recoverySummary.recoveryPromptForTask({
+      project_label: proj.label,
+      task_id:       o.task_id,
+      task_intent:   taskRow ? taskRow.intent : null,
+      task_state:    taskRow ? taskRow.state  : null,
+      checkpoint:    summary.last_ready || (summary.safe_anchors[0] || null),
+    });
+    return { ok: true, prompt, summary };
+  }
+
+  // Project-level prompt.
+  const ckpts = projectQueries.queryProjectScopedCheckpoints(
+    entry.db, entry.tables, agentIds, 50,
+  );
+  const summary = recoverySummary.deriveProjectRecovery(ckpts, {});
+  const prompt = recoverySummary.recoveryPromptForProject({
+    project_label: proj.label,
+    summary,
+  });
+  return { ok: true, prompt, summary };
+});
+
+ipcMain.handle('generate-prompt-pack', async (_e, projectId, opts) => {
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const entry = ensureDbHandle(proj.db_path);
+  if (!entry) return { ok: false, error: 'db_unavailable' };
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  // Reuse the gate input — same shape (goal + rules + state + reports);
+  // also pass the cached gate result if available so the pack
+  // checklist can dedupe against it. Plus a coordination summary so
+  // the prompt pack carries today's coordination context (not the
+  // raw signals — only the LLM-safe summary form).
+  const coordInput = buildCoordinationInput(proj, entry, agentIds);
+  const coord = coordinationSignals.deriveCoordinationSignals(coordInput, {});
+  const coordSummary = coordinationSignals.summarizeCoordination(coord);
+  const input = Object.assign({}, buildPrePrGateInput(proj, entry, agentIds), {
+    pre_pr_gate: prePrGateCache.get(projectId)
+      ? prePrGateCache.get(projectId).result
+      : null,
+    coordination_summary: coordSummary,
+  });
+  const force = !!(opts && opts.forceDeterministic);
+  const result = await goalLoopPromptPack.generatePromptPack(input, {
+    forceDeterministic: force,
+  });
+  promptPackCache.set(projectId, { result, generated_at: Date.now() });
+  return { ok: true, result };
+});
+
+// ---------------------------------------------------------------------------
+// Managed Loop — Cairn-managed external repo workflow
+// ---------------------------------------------------------------------------
+//
+// Per PRODUCT.md §1.3 + §6.4: Cairn manages the loop, never the work.
+// Every channel here is user-triggered (panel button click). We never
+// auto-launch a worker; we never push, fetch, checkout, reset, or
+// otherwise mutate the managed repo's working tree. The IPC layer is
+// a thin wrapper over managed-loop-handlers.cjs.
+
+ipcMain.handle('list-managed-projects', () => {
+  return managedLoopHandlers.listManagedProjects(reg);
+});
+
+ipcMain.handle('register-managed-project', (_e, projectId, input) => {
+  return managedLoopHandlers.registerManagedProject(reg, projectId, input || {});
+});
+
+ipcMain.handle('get-managed-project-profile', (_e, projectId) => {
+  return managedLoopHandlers.getManagedProjectProfile(projectId);
+});
+
+ipcMain.handle('start-managed-iteration', (_e, projectId, input) => {
+  return managedLoopHandlers.startManagedIteration(projectId, input || {});
+});
+
+ipcMain.handle('generate-managed-worker-prompt', (_e, projectId, opts) => {
+  // Build the heavy context (goal/rules/gate/coord) from main process
+  // state so the panel doesn't have to re-fetch each.
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const o = opts || {};
+  const goal = registry.getProjectGoal(reg, projectId);
+  const effective = registry.getEffectiveProjectRules(reg, projectId);
+  const rules = effective ? effective.rules : null;
+  const isDefault = effective ? effective.is_default : true;
+  const cachedGate = prePrGateCache.get(projectId);
+  const ctx = {
+    iteration_id: o.iteration_id || null,
+    goal,
+    project_rules: rules,
+    project_rules_is_default: isDefault,
+    pre_pr_gate: cachedGate ? cachedGate.result : null,
+  };
+  return managedLoopHandlers.generateManagedWorkerPrompt(projectId, ctx);
+});
+
+ipcMain.handle('attach-managed-worker-report', (_e, projectId, input) => {
+  return managedLoopHandlers.attachManagedWorkerReport(projectId, input || {});
+});
+
+ipcMain.handle('collect-managed-evidence', (_e, projectId, input) => {
+  return managedLoopHandlers.collectManagedEvidence(projectId, input || {});
+});
+
+ipcMain.handle('review-managed-iteration', async (_e, projectId, opts) => {
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const o = opts || {};
+  const cachedGate = prePrGateCache.get(projectId);
+  const goal = registry.getProjectGoal(reg, projectId);
+  const effective = registry.getEffectiveProjectRules(reg, projectId);
+  const ctx = {
+    iteration_id: o.iteration_id || null,
+    pre_pr_gate: cachedGate ? cachedGate.result : null,
+    goal,
+    rules: effective ? effective.rules : null,
+  };
+  return managedLoopHandlers.reviewManagedIteration(projectId, ctx, {
+    forceDeterministic: !!o.forceDeterministic,
+  });
+});
+
+ipcMain.handle('list-managed-iterations', (_e, projectId, limit) => {
+  return managedLoopHandlers.listManagedIterations(projectId, limit || 0);
+});
+
+// Worker Launch — user-authorized, single-shot agent runs. Each
+// channel is one panel button; never invoked on a timer.
+
+ipcMain.handle('detect-worker-providers', () => {
+  return managedLoopHandlers.detectWorkerProviders();
+});
+
+ipcMain.handle('launch-managed-worker', (_e, projectId, input) => {
+  return managedLoopHandlers.launchManagedWorker(projectId, input || {});
+});
+
+ipcMain.handle('get-worker-run', (_e, runId) => {
+  return managedLoopHandlers.getWorkerRun(runId);
+});
+
+ipcMain.handle('list-worker-runs', (_e, projectId) => {
+  return managedLoopHandlers.listWorkerRuns(projectId);
+});
+
+ipcMain.handle('stop-worker-run', (_e, runId) => {
+  return managedLoopHandlers.stopWorkerRun(runId);
+});
+
+ipcMain.handle('tail-worker-run', (_e, runId, limit) => {
+  return managedLoopHandlers.tailWorkerRun(runId, limit || 16 * 1024);
+});
+
+ipcMain.handle('extract-worker-report', (_e, projectId, input) => {
+  return managedLoopHandlers.extractManagedWorkerReport(projectId, input || {});
+});
+
+ipcMain.handle('extract-scout-candidates', (_e, projectId, input) => {
+  return managedLoopHandlers.extractScoutCandidates(projectId, input || {});
+});
+
+ipcMain.handle('pick-candidate-and-launch-worker', (_e, projectId, input) => {
+  return managedLoopHandlers.pickCandidateAndLaunchWorker(projectId, input || {});
+});
+
+ipcMain.handle('run-review-for-candidate', (_e, projectId, input) => {
+  return managedLoopHandlers.runReviewForCandidate(projectId, input || {});
+});
+
+ipcMain.handle('extract-review-verdict', (_e, projectId, input) => {
+  return managedLoopHandlers.extractReviewVerdict(projectId, input || {});
+});
+
+// Day 5 — read-only candidate accessors (always available; Inspector
+// + smokes use these to render and inspect rows).
+ipcMain.handle('list-candidates', (_e, projectId, limit) => {
+  return managedLoopHandlers.listCandidates(projectId, limit || 100);
+});
+ipcMain.handle('list-candidates-by-status', (_e, projectId, status) => {
+  return managedLoopHandlers.listCandidatesByStatus(projectId, status);
+});
+ipcMain.handle('get-candidate', (_e, projectId, candidateId) => {
+  return managedLoopHandlers.getCandidate(projectId, candidateId);
+});
+
+// Day 6 — boundary verify. Read-only against the managed repo (uses
+// the existing evidence whitelist — `git status --short` only). Side
+// effects are confined to ~/.cairn/ JSONLs (candidate.boundary_violations
+// + iteration.evidence_summary), matching the same write surface
+// every other Three-Stage handler already touches. Not gated by
+// MUTATIONS_ENABLED — verify is the reviewer's lens, not a state
+// transition.
+ipcMain.handle('verify-worker-boundary', (_e, projectId, input) => {
+  return managedLoopHandlers.verifyWorkerBoundary(projectId, input || {});
+});
+
+// Multi-Cairn v0 — read-only sharing of published candidates. Status
+// + list are unconditional reads; publish / unpublish are user
+// mutations on the shared outbox and gated on MUTATIONS_ENABLED to
+// stay consistent with Day 5's Accept / Reject / Roll back pattern.
+ipcMain.handle('get-multi-cairn-status', () => {
+  return managedLoopHandlers.getMultiCairnStatus();
+});
+ipcMain.handle('list-team-candidates', (_e, projectId) => {
+  return managedLoopHandlers.listTeamCandidates(projectId);
+});
+ipcMain.handle('list-my-published-candidate-ids', (_e, projectId) => {
+  return managedLoopHandlers.listMyPublishedCandidateIds(projectId);
+});
+if (MUTATIONS_ENABLED) {
+  ipcMain.handle('publish-candidate-to-team', (_e, projectId, candidateId) => {
+    return managedLoopHandlers.publishCandidateToTeam(projectId, candidateId);
+  });
+  ipcMain.handle('unpublish-candidate-from-team', (_e, projectId, candidateId) => {
+    return managedLoopHandlers.unpublishCandidateFromTeam(projectId, candidateId);
+  });
+}
+
+// Mode B Continuous Iteration — auto-chains Scout → up-to-N
+// (Worker → Review → Verify) and stops every candidate at REVIEWED.
+// run / stop are gated on MUTATIONS_ENABLED (they spawn external
+// agents); get / list are unconditional reads.
+ipcMain.handle('get-continuous-run', (_e, projectId, runId) => {
+  return managedLoopHandlers.getContinuousRun(projectId, runId);
+});
+ipcMain.handle('list-continuous-runs', (_e, projectId, limit) => {
+  return managedLoopHandlers.listContinuousRuns(projectId, limit || 50);
+});
+if (MUTATIONS_ENABLED) {
+  ipcMain.handle('run-continuous-iteration', (_e, projectId, input) => {
+    return managedLoopHandlers.runContinuousIteration(projectId, input || {});
+  });
+  ipcMain.handle('stop-continuous-iteration', (_e, runId) => {
+    return managedLoopHandlers.stopContinuousIteration(runId);
+  });
+}
+
+// Mode A — Mentor Layer (advisor chat).
+//
+// ask-mentor spawns a provider (claude-code / codex / fixture-mentor)
+// to polish the deterministic skeleton; that's an "agent run" by the
+// same launcher pipeline as Scout/Worker/Review, so it's gated on
+// MUTATIONS_ENABLED. list-mentor-history / get-mentor-entry are pure
+// reads on ~/.cairn/mentor-history JSONL and always exposed.
+ipcMain.handle('list-mentor-history', (_e, projectId, limit) => {
+  return mentorHandler.listMentorHistory(projectId, limit || 50);
+});
+ipcMain.handle('get-mentor-entry', (_e, projectId, turnId) => {
+  return mentorHandler.getMentorEntry(projectId, turnId);
+});
+if (MUTATIONS_ENABLED) {
+  ipcMain.handle('ask-mentor', (_e, projectId, input) => {
+    return mentorHandler.askMentor(projectId, input || {});
+  });
+}
+
+// Day 5 — terminal user-action handlers. Gated on
+// CAIRN_DESKTOP_ENABLE_MUTATIONS=1 to honor PRODUCT.md §12 D9: panel
+// stays read-only, the Inspector (already opt-in for mutations via
+// the same env flag) is where users click Accept/Reject/Roll back.
+// Smokes call the handler functions directly (not through IPC) so
+// they don't depend on the env flag.
+if (MUTATIONS_ENABLED) {
+  ipcMain.handle('accept-candidate', (_e, projectId, candidateId) => {
+    return managedLoopHandlers.acceptCandidate(projectId, candidateId);
+  });
+  ipcMain.handle('reject-candidate', (_e, projectId, candidateId) => {
+    return managedLoopHandlers.rejectCandidate(projectId, candidateId);
+  });
+  ipcMain.handle('roll-back-candidate', (_e, projectId, candidateId) => {
+    return managedLoopHandlers.rollBackCandidate(projectId, candidateId);
+  });
+}
+
+ipcMain.handle('continue-managed-iteration-review', async (_e, projectId, opts) => {
+  // Same context build as review-managed-iteration; collects evidence + reviews.
+  const proj = reg.projects.find(p => p.id === projectId);
+  if (!proj) return { ok: false, error: 'project_not_found' };
+  const o = opts || {};
+  const cachedGate = prePrGateCache.get(projectId);
+  const goal = registry.getProjectGoal(reg, projectId);
+  const effective = registry.getEffectiveProjectRules(reg, projectId);
+  const ctx = {
+    iteration_id: o.iteration_id || null,
+    pre_pr_gate: cachedGate ? cachedGate.result : null,
+    goal,
+    rules: effective ? effective.rules : null,
+  };
+  return managedLoopHandlers.continueManagedIterationReview(projectId, ctx, {
+    forceDeterministic: !!o.forceDeterministic,
+  });
+});
+
+// Project Pulse — derived signals only. No mutation, no recommendation
+// of next agent action. Uses the same project summary + activity feed
+// the rest of the IPC layer already produces; no new SQL.
+ipcMain.handle('get-project-pulse', () => {
+  const proj = activeProject();
+  const entry = activeDbEntry();
+  if (!proj || !entry) {
+    return goalSignals.deriveProjectPulse(null, [], {});
+  }
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  const summary = projectQueries.queryProjectScopedSummary(
+    entry.db, entry.tables, proj.db_path, agentIds,
+  );
+  const claudeAll = claudeSessionScan.scanClaudeSessions();
+  const codexAll  = codexSessionScan.scanCodexSessions();
+  const { matched: claudeForP } = claudeSessionScan.partitionByProject(claudeAll, proj);
+  const { matched: codexForP }  = codexSessionScan.partitionByProject(codexAll, proj);
+  foldClaudeIntoSummary(summary, claudeForP);
+  foldCodexIntoSummary(summary, codexForP);
+  const mcpForActivity = buildMcpActivityRows(entry.db, entry.tables, proj, agentIds);
+  const built = agentActivity.buildProjectActivities(
+    proj, mcpForActivity, claudeAll, codexAll,
+    { claude: claudeSessionScan, codex: codexSessionScan, db: entry.db },
+  );
+  summary.agent_activity = built.summary;
+  return goalSignals.deriveProjectPulse(summary, built.activities, {});
+});
+
+ipcMain.handle('get-project-summary', () => {
+  const entry = activeDbEntry();
+  if (!entry) return projectQueries.queryProjectScopedSummary(null, new Set(), activeDbPath(), []);
+  const proj = activeProject();
+  if (proj) {
+    const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+    const summary = projectQueries.queryProjectScopedSummary(
+      entry.db, entry.tables, proj.db_path, agentIds,
+    );
+    // Fold Claude rows into the L2 summary so the active-project card
+    // shows "agents MCP X · Claude Y · Codex Z" identically to L1.
+    const claudeAll = claudeSessionScan.scanClaudeSessions();
+    const { matched } = claudeSessionScan.partitionByProject(claudeAll, proj);
+    foldClaudeIntoSummary(summary, matched);
+    const codexAll = codexSessionScan.scanCodexSessions();
+    const { matched: codexMatched } = codexSessionScan.partitionByProject(codexAll, proj);
+    foldCodexIntoSummary(summary, codexMatched);
+
+    // Activity-layer summary alongside the legacy per-source folds so
+    // the L2 summary card can render "X live · Y recent" headline.
+    const mcpForActivity = buildMcpActivityRows(entry.db, entry.tables, proj, agentIds);
+    const built = agentActivity.buildProjectActivities(
+      proj, mcpForActivity, claudeAll, codexAll,
+      { claude: claudeSessionScan, codex: codexSessionScan, db: entry.db },
+    );
+    summary.agent_activity = built.summary;
+    return summary;
+  }
+  // No project selected — fall back to the legacy unscoped summary.
+  return queries.queryProjectSummary(entry.db, entry.tables, activeDbPath());
+});
+
+// Day 5: returns the project-scoped + enriched payload (filtered by
+// agent_id_hints, with per-task blocker / outcome / checkpoint counts).
+// When no project is selected (or when the active project has no
+// hints) the renderer surfaces an empty state — DB-wide tasks no
+// longer leak into the L2 view.
+ipcMain.handle('get-tasks-list', () => {
+  const proj = activeProject();
+  const entry = activeDbEntry();
+  if (!proj || !entry) {
+    return { available: false, hints_empty: true, tasks: [] };
+  }
+  // Real Agent Presence v2: include capability-matched sessions in
+  // the attribution set, not just registry hints.
+  const agentIds = projectQueries.resolveProjectAgentIds(entry.db, entry.tables, proj);
+  return projectQueries.queryProjectScopedTasks(
+    entry.db, entry.tables, agentIds,
+  );
+});
+
+ipcMain.handle('get-task-detail', (_e, taskId) => {
+  const entry = activeDbEntry();
+  if (!entry) return null;
+  return queries.queryTaskDetail(entry.db, entry.tables, taskId);
+});
+
+// Checkpoints attached to a task — fetched on detail expand. Read-only;
+// no rewind / preview / mutation channel.
+ipcMain.handle('get-task-checkpoints', (_e, taskId) => {
+  const entry = activeDbEntry();
+  if (!entry) return [];
+  return queries.queryTaskCheckpoints(entry.db, entry.tables, taskId);
+});
+
+ipcMain.handle('get-run-log-events', () => {
+  const entry = activeDbEntry();
+  if (!entry) return [];
+  return queries.queryRunLogEvents(entry.db, entry.tables);
+});
+
+ipcMain.handle('get-db-path', () => activeDbPath());
+
+ipcMain.handle('set-db-path', async (_e, _requestedPath) => {
+  // Project-Aware reframe: there's no "current DB path" any more —
+  // a project's db_path is fixed at registry-add time. Tell the
+  // renderer to use add-project instead.
+  return {
+    ok: false,
+    error: 'set-db-path is deprecated; use add-project (with project_root) instead',
+  };
+});
+
+ipcMain.on('open-legacy-inspector', () => createLegacyWindow());
+
+// ---------------------------------------------------------------------------
+// IPC — legacy / pet channels (unchanged shape; routed to active DB)
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('get-state', () => {
+  const e = activeDbEntry();
+  return queries.queryLegacyState(e ? e.db : null, e ? e.tables : new Set());
+});
+ipcMain.handle('get-active-agents', () => {
+  const e = activeDbEntry();
+  return queries.queryActiveAgents(e ? e.db : null, e ? e.tables : new Set());
+});
+ipcMain.handle('get-open-conflicts', () => {
+  const e = activeDbEntry();
+  return queries.queryOpenConflicts(e ? e.db : null, e ? e.tables : new Set());
+});
+ipcMain.handle('get-recent-dispatches', () => {
+  const e = activeDbEntry();
+  return queries.queryRecentDispatches(e ? e.db : null, e ? e.tables : new Set());
+});
+ipcMain.handle('get-active-lanes', () => {
+  const e = activeDbEntry();
+  return queries.queryActiveLanes(e ? e.db : null, e ? e.tables : new Set());
+});
+
+ipcMain.on('open-inspector', () => {
+  // Day 4: the floating marker (preview.html) now toggles the side
+  // panel instead of opening the legacy Inspector — same gesture as
+  // tray click. Channel name kept for preview.js compatibility (no
+  // preload churn). Legacy Inspector is reachable via tray right-click
+  // menu and the panel's overflow menu.
+  togglePanel();
+});
+
+// Custom titlebar close button → slide out + hide. Never quits.
+ipcMain.on('cairn:hide-panel', () => {
+  hidePanelSlide();
+});
+
+// ---------------------------------------------------------------------------
+// IPC — mutation channel (gated on env flag)
+// ---------------------------------------------------------------------------
+
+// Synchronous probe used by preload.cjs to decide whether to expose
+// resolveConflict on window.cairn.
+ipcMain.on('cairn:mutations-enabled?', (event) => {
+  event.returnValue = MUTATIONS_ENABLED;
+});
+
+if (MUTATIONS_ENABLED) {
+  ipcMain.handle('resolve-conflict', (_e, conflictId, resolution) => {
+    const targetDbPath = activeDbPath();
+    if (!targetDbPath) return { ok: false, error: 'no DB connected' };
+    try {
+      const wdb = openWriteDb(targetDbPath);
+      const resolutionText = resolution || 'resolved via Inspector';
+      const now = Date.now();
+      const result = wdb.prepare(`
+        UPDATE conflicts
+           SET status = 'RESOLVED',
+               resolved_at = ?,
+               resolution = ?
+         WHERE id = ? AND status IN ('OPEN', 'PENDING_REVIEW')
+      `).run(now, resolutionText, conflictId);
+      if (result.changes === 0) {
+        const row = wdb.prepare('SELECT status FROM conflicts WHERE id = ?').get(conflictId);
+        const reason = row ? `conflict status is already ${row.status}` : 'conflict not found';
+        return { ok: false, error: reason };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// IPC — pet drag (unchanged)
+// ---------------------------------------------------------------------------
+
+let dragOffsetX = 0, dragOffsetY = 0;
+
+ipcMain.on('start-drag', (_e, { mouseX, mouseY }) => {
+  if (!petWindow) return;
+  const [winX, winY] = petWindow.getPosition();
+  dragOffsetX = mouseX - winX;
+  dragOffsetY = mouseY - winY;
+});
+
+ipcMain.on('do-drag', (_e, { mouseX, mouseY }) => {
+  if (!petWindow) return;
+  petWindow.setPosition(
+    Math.round(mouseX - dragOffsetX),
+    Math.round(mouseY - dragOffsetY)
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
+app.whenReady().then(() => {
+  // Skill externalisation Phase 1 (2026-05-15): drop the embedded skill
+  // defaults into ~/.cairn/skills/ if they're not there yet. Idempotent —
+  // never overwrites a user-edited file. Failures are non-fatal (skill
+  // loader has a 5-line graceful-degrade fallback baked into each caller).
+  try {
+    const bs = skillsLoader.bootstrapSkillsDir({ force: false });
+    if (bs && bs.copied && bs.copied.length > 0) {
+      cairnLog.info('main', 'skills_bootstrap', { copied: bs.copied });
+    }
+    if (bs && bs.errors && bs.errors.length > 0) {
+      cairnLog.warn('main', 'skills_bootstrap_errors', { errors: bs.errors });
+    }
+  } catch (e) {
+    cairnLog.warn('main', 'skills_bootstrap_threw', {
+      message: (e && e.message) || String(e),
+    });
+  }
+
+  // Load (or bootstrap) the registry, then open one read handle per
+  // unique db_path. The legacy desktop-shell.json is read by registry
+  // bootstrap if projects.json doesn't exist yet, producing a single
+  // legacy-default entry pointing at the old dbPath.
+  reg = registry.loadRegistry();
+  openAllRegistryDbs();
+  // No project selected at boot — panel opens to L1 view.
+  selectedProjectId = null;
+
+  // Tray comes up first so the app has a persistent entry point even if
+  // the user immediately closes the panel.
+  createTray();
+
+  // Always create the pet (ambient presence). Then open either the panel
+  // or the legacy Inspector depending on launch mode.
+  createPetWindow();
+  if (LEGACY_MODE) {
+    createLegacyWindow();
+  } else {
+    createPanelWindow();
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `cairn desktop-shell ready — mode=${LEGACY_MODE ? 'legacy' : 'panel'} ` +
+    `mutations=${MUTATIONS_ENABLED ? 'on(dev)' : 'off'} ` +
+    `tray=on projects=${reg.projects.length} dbs=${dbHandles.size}`
+  );
+
+  // Start Mentor auto-tick (Phase 8 — the engine behind "agent 在执行 ·
+  // Mentor 在引导 · 你可以走开"). Disabled in BOOT_TEST mode because the
+  // smoke harness quits in ~3s and the tick adds noise. Disabled in
+  // LEGACY mode because the legacy Inspector predates the cockpit
+  // policy. Both gates are conservative — flip if needed.
+  if (!LEGACY_MODE && !process.env.CAIRN_DESKTOP_BOOT_TEST) {
+    mentorTick.start({
+      // reg is reassigned by addProject/setGoal/etc handlers, so use a
+      // getter that always returns the latest binding. Other deps
+      // (projectQueries, mentorPolicy, registry) are module-level
+      // immutable.
+      get reg() { return reg; },
+      // 2026-05-14 fix: mentor-tick MUST write (scratchpad mode_a_plan,
+      // mentor_todo rows, blocker auto-answers, dispatch_requests). The
+      // panel-render ensureDbHandle opens readonly, breaking ALL writes.
+      // ensureWritableDbHandle gives mentor-tick the same handle shape
+      // but in r/w mode. Panel renders still use the readonly version.
+      ensureDbHandle: ensureWritableDbHandle,
+      projectQueries, mentorPolicy, registry,
+    });
+    // eslint-disable-next-line no-console
+    console.log(`cairn mentor auto-tick — started (every ${mentorTick.TICK_INTERVAL_MS / 1000}s)`);
+  }
+
+  // Boot smoke: when CAIRN_DESKTOP_BOOT_TEST=1 is set, run a few poll
+  // ticks to exercise tray + getProjectsList + IPC handlers, then quit
+  // gracefully so the smoke driver can assert exit code.
+  if (process.env.CAIRN_DESKTOP_BOOT_TEST === '1') {
+    // Drive one explicit tray refresh + one project-list build to
+    // catch wiring errors that wouldn't surface from the timer-only
+    // path (e.g. a missing require).
+    try { refreshTray(); } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('BOOT_TEST refreshTray failed:', e && e.message);
+      process.exit(2);
+    }
+    try {
+      const list = getProjectsList();
+      // eslint-disable-next-line no-console
+      console.log(
+        `BOOT_TEST projects=${list.projects.length} unassigned=${list.unassigned.length}`
+      );
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('BOOT_TEST getProjectsList failed:', e && e.message);
+      process.exit(2);
+    }
+    setTimeout(() => {
+      isQuitting = true;
+      app.quit();
+    }, 3000);
+  }
+});
+
+// Tray-aware lifecycle: closing all windows does NOT quit the app.
+// Users who want to actually exit must use the tray's Quit menu (which
+// flips isQuitting and calls app.quit()). On macOS this matches the
+// platform convention; on Windows it gives the tray a meaningful role
+// instead of being an orphan icon (plan §10 R14).
+app.on('window-all-closed', () => {
+  if (isQuitting) app.quit();
+  // otherwise: keep app + tray alive
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
+  cancelPanelAnim();
+  if (trayPollTimer) {
+    clearInterval(trayPollTimer);
+    trayPollTimer = null;
+  }
+  if (tray) {
+    try { tray.destroy(); } catch (_e) { cairnLog.warn('main', 'tray_destroy_failed', { message: (_e && _e.message) || String(_e) }); }
+    tray = null;
+  }
+  // Close every read + write handle to release file locks on Windows.
+  for (const entry of dbHandles.values()) {
+    try { entry.db.close(); } catch (_e) { cairnLog.warn('main', 'db_handle_quit_close_failed', { message: (_e && _e.message) || String(_e) }); }
+  }
+  dbHandles.clear();
+  for (const w of writeHandles.values()) {
+    try { w.close(); } catch (_e) { cairnLog.warn('main', 'write_handle_quit_close_failed', { message: (_e && _e.message) || String(_e) }); }
+  }
+  writeHandles.clear();
+});

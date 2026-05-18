@@ -1,0 +1,3094 @@
+<!DOCTYPE html>
+<html lang="en" data-cairn-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>Cairn — Project Control Surface</title>
+<style>
+/* ==============================================================
+   Cairn Panel — Design System CSS (full rewrite)
+   Replaces panel.html's inline <style> block.
+   Aesthetic: Industrial / Utilitarian
+   Anchor: "一眼看清所有状态，给跑 agent 的人用"
+   ============================================================== */
+
+/* ---- Theme variables ---- */
+:root,
+html[data-cairn-theme="dark"] {
+  --bg-base:      #0f0f0f;
+  --bg-surface:   #161618;
+  --bg-elevated:  #1e1e22;
+  --border:       #2a2a2e;
+  --border-focus: #3a3a40;
+  --text-primary:   #e8e8ec;
+  --text-secondary: #8888a0;
+  --text-muted:     #555566;
+  --accent:       #5b9aff;
+  --accent-muted: #3d6ab3;
+  --accent-bg:    rgba(91, 154, 255, 0.08);
+  --accent-hover-bg: rgba(91, 154, 255, 0.18);
+  --on-accent:    #ffffff;
+  --alert:        #e85545;
+  --alert-bg:     rgba(232, 85, 69, 0.08);
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+html[data-cairn-theme="light"] {
+  --bg-base:      #f0f0f3;
+  --bg-surface:   #fafafa;
+  --bg-elevated:  #ffffff;
+  --border:       #d4d4dc;
+  --border-focus: #aaaab8;
+  --text-primary:   #1c1c22;
+  --text-secondary: #3a3a4c;
+  --text-muted:     #6e6e80;
+  --accent:       #2e6ed8;
+  --accent-muted: #5586d5;
+  --accent-bg:    rgba(46, 110, 216, 0.10);
+  --accent-hover-bg: rgba(46, 110, 216, 0.22);
+  --on-accent:    #ffffff;
+  --alert:        #c42828;
+  --alert-bg:     rgba(196, 40, 40, 0.08);
+  --shadow: 0 1px 3px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.05);
+}
+:root {
+  --font: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-micro: 80ms;
+  --dur-short: 150ms;
+  --dur-medium: 250ms;
+  --dur-long: 400ms;
+}
+
+/* ---- Reset + base ---- */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+/* CDP debug 2026-05-15: html bg must be solid so Electron
+   BrowserWindow.backgroundColor (#1a1a1a, hardcoded main.cjs:549)
+   does NOT bleed through any transparent CSS stacking context.
+   Without this, light theme leaves panel content dark because the
+   window bg shows under transparent grandchildren. */
+html {
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+body {
+  font-family: var(--font);
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  transition: background var(--dur-medium) var(--ease-out),
+              color var(--dur-medium) var(--ease-out);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
+::-webkit-scrollbar-thumb:active { background: var(--accent-muted); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ============================================================
+   APP SHELL — header / footer / menu
+   ============================================================ */
+#header {
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  user-select: none;
+  height: 42px;
+  transition: background var(--dur-medium) var(--ease-out),
+              border-color var(--dur-medium) var(--ease-out);
+}
+#workspace-label { color: var(--accent); font-weight: 600; font-size: 14px; flex: 0 0 auto; letter-spacing: 0.01em; }
+#db-path {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#menu-btn, #close-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 1px 8px;
+  font-family: var(--font);
+  font-size: 0.9em;
+  border-radius: var(--radius-sm);
+  flex: 0 0 auto;
+  transition: all var(--dur-micro) var(--ease-out);
+}
+#menu-btn:hover, #close-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+#menu-pop {
+  position: absolute;
+  top: 38px;
+  right: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: none;
+  z-index: 100;
+  padding: 4px;
+  min-width: 180px;
+}
+#menu-pop.open { display: block; }
+#menu-pop button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--dur-micro) var(--ease-out);
+}
+#menu-pop button:hover { background: var(--bg-base); color: var(--accent); }
+
+#footer {
+  padding: 4px 12px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  flex: 0 0 auto;
+  text-align: center;
+  transition: background var(--dur-medium) var(--ease-out),
+              border-color var(--dur-medium) var(--ease-out);
+}
+#footer.bad { color: var(--alert); }
+
+/* ============================================================
+   L1 — Project list
+   ============================================================ */
+#view-projects-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: viewEnter var(--dur-medium) var(--ease-out) both;
+  min-height: 0;
+}
+.pl-section-title {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 4px 4px 6px;
+}
+.pcard {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color var(--dur-micro) var(--ease-out),
+              background var(--dur-micro) var(--ease-out);
+}
+.pcard:hover {
+  border-color: var(--border-focus);
+  background: var(--bg-elevated);
+}
+.pcard-line1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.pcard-dot { color: var(--text-muted); font-size: 8px; flex: 0 0 auto; }
+.pcard-dot.active { color: var(--accent); animation: dotPulse 2s ease-in-out infinite; }
+.pcard-dot.alert { color: var(--alert); }
+.pcard-label { color: var(--text-primary); font-weight: 600; flex: 1; }
+.pcard-toggle { color: var(--text-muted); cursor: pointer; }
+.pcard-root, .pcard-db { color: var(--text-muted); font-size: 11px; margin-left: 16px; }
+.pcard-summary {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin: 4px 0 0 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pcard-summary b { color: var(--text-primary); font-weight: 500; }
+.pcard-summary .zero { color: var(--text-muted); }
+.pcard-actions { margin: 6px 0 0 16px; display: flex; gap: 12px; }
+.pcard-actions a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+  transition: color var(--dur-micro) var(--ease-out);
+}
+.pcard-actions a:hover { color: var(--accent-muted); text-decoration: underline; }
+
+.pl-add {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  text-align: center;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.pl-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.pl-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 32px 16px;
+  font-style: italic;
+}
+.placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 10px 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   L2 — Cockpit shell
+   ============================================================ */
+#view-project, #view-cockpit {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: viewEnter var(--dur-medium) var(--ease-out) both;
+  min-height: 0;
+}
+@keyframes viewEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Cockpit tabs (project switcher) */
+#cockpit-tabs, .cockpit-tabs {
+  display: flex;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-base);
+  flex: 0 0 auto;
+}
+.cockpit-tab {
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all var(--dur-short) var(--ease-out);
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: var(--font);
+  font-weight: 500;
+}
+.cockpit-tab:hover { color: var(--text-secondary); }
+.cockpit-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Cockpit state strip */
+.cockpit-state, #cockpit-state {
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-base);
+}
+.cockpit-run-mode {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.cockpit-run-mode-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.cockpit-mode-toggle { display: flex; gap: 0; }
+.mode-pill, #cockpit-mode-A, #cockpit-mode-B {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-family: var(--font);
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+  border-radius: 0;
+  margin-left: -1px;
+}
+.mode-pill:first-child, #cockpit-mode-A { border-radius: var(--radius-sm) 0 0 var(--radius-sm); margin-left: 0; }
+.mode-pill:last-child, #cockpit-mode-B { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.mode-pill.active, #cockpit-mode-A.active, #cockpit-mode-B.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-muted);
+  color: var(--accent);
+  font-weight: 600;
+  z-index: 1;
+}
+/* TOP-2 audit: mode-pill had no :hover rule. Make inactive pill brighten
+   border to accent on hover so it's discoverable as clickable. */
+.mode-pill:hover:not(.active),
+#cockpit-mode-A:hover:not(.active),
+#cockpit-mode-B:hover:not(.active) {
+  border-color: var(--accent-muted);
+  color: var(--text-primary);
+  z-index: 1;
+}
+.cockpit-run-mode-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* Goal row */
+.cockpit-goal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.cockpit-goal-label {
+  font-size: 9px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.cockpit-goal-title { color: var(--text-primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cockpit-goal-edit-link, .cockpit-ship-now-btn {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 10px;
+  background: none;
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all var(--dur-micro) var(--ease-out);
+}
+.cockpit-goal-edit-link:hover, .cockpit-ship-now-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.cockpit-ship-now-status { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
+
+/* CAIRN.md whole / mentor-saved / stale-agents / last-24h ribbons */
+.cockpit-whole, .cockpit-mentor-saved, .cockpit-stale-agents, .cockpit-last-24h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  background: var(--bg-surface);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.cockpit-stale-agents { border-left-color: var(--alert); }
+.cockpit-whole-label, .cockpit-last-24h-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex: 0 0 auto;
+}
+.cockpit-whole-text, .cockpit-mentor-saved-text, .cockpit-stale-text, .cockpit-last-24h-text { color: var(--text-secondary); }
+.cockpit-mentor-saved-icon, .cockpit-stale-icon { font-size: 12px; }
+
+/* Status line + progress */
+.cockpit-status-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.cockpit-status-dot {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  line-height: 1;
+}
+.cockpit-status-dot.active, .cockpit-status-dot.green {
+  color: var(--accent);
+  animation: dotPulse 2s ease-in-out infinite;
+}
+.cockpit-status-dot.alert, .cockpit-status-dot.red { color: var(--alert); }
+.cockpit-status-dot.amber { color: var(--text-secondary); }
+.cockpit-status-text {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+}
+.cockpit-status-detail {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.cockpit-progress-bar {
+  display: inline-block;
+  height: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-muted));
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  min-width: 60px;
+  transition: width var(--dur-long) var(--ease-out);
+}
+.cockpit-progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%);
+  animation: shimmer 2s ease-in-out infinite;
+}
+@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
+.cockpit-progress-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.cockpit-current-task, .cockpit-mentor-nudge {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Module shared — left stripe + inner padding
+   ============================================================ */
+.cockpit-mentor-module, .cockpit-todolist, .cockpit-lane,
+.cockpit-sessions, .cockpit-safety, .cockpit-steer,
+.cockpit-needs, .cockpit-activity, #cockpit-coord-section {
+  position: relative;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  background: var(--bg-base);
+  transition: background var(--dur-medium) var(--ease-out),
+              border-color var(--dur-medium) var(--ease-out);
+}
+.cockpit-mentor-module { border-left-color: var(--accent); }
+.cockpit-todolist     { border-left-color: var(--accent); }
+.cockpit-lane         { border-left-color: var(--accent); }
+.cockpit-steer        { border-left-color: var(--accent); }
+.cockpit-sessions     { border-left-color: var(--border-focus); }
+.cockpit-safety       { border-left-color: var(--border-focus); }
+.cockpit-activity     { border-left-color: var(--border-focus); }
+
+.cockpit-mentor-module.active {
+  border-left: 4px solid var(--alert);
+  background: linear-gradient(90deg, rgba(232, 85, 69, 0.05) 0%, transparent 30%);
+  animation: alertGlow 2.5s ease-in-out infinite;
+}
+@keyframes alertGlow {
+  0%, 100% {
+    background: linear-gradient(90deg, rgba(232, 85, 69, 0.04) 0%, transparent 25%);
+    border-left-color: var(--alert);
+  }
+  50% {
+    background: linear-gradient(90deg, rgba(232, 85, 69, 0.10) 0%, transparent 35%);
+    border-left-color: #ff7565;
+  }
+}
+
+/* Section title — module heading uppercase */
+.cockpit-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+.cockpit-mentor-module.active .cockpit-section-title { color: var(--alert); }
+
+/* Mentor status row */
+.cockpit-mentor-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.cockpit-mentor-state { color: var(--text-primary); font-weight: 500; }
+.cockpit-mentor-state.alert { color: var(--alert); font-weight: 600; }
+.cockpit-mentor-last-check, .cockpit-mentor-today { color: var(--text-muted); font-size: 11px; }
+
+/* Mode A plan widget */
+.cockpit-mode-a-plan {
+  margin: 10px 0;
+  padding: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.cockpit-mode-a-plan-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.cockpit-mode-a-plan-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.cockpit-mode-a-plan-phase-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.cockpit-mode-a-plan-phase-pill.idle, .cockpit-mode-a-plan-phase-pill.paused {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+.cockpit-mode-a-plan-phase-pill.running { background: var(--accent-bg); color: var(--accent); }
+.cockpit-mode-a-plan-phase-pill.planning { background: var(--accent-bg); color: var(--accent); animation: dotPulse 1.5s ease-in-out infinite; }
+/* Signal-cat refactor commit A (2026-05-15) — STATUS pill row */
+.cockpit-signals-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px 0 2px 0;
+  font-size: 11px;
+}
+.cockpit-signals-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.cockpit-signals-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.cockpit-signals-pills .pill {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.cockpit-signals-pills .pill.avail {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.cockpit-signals-pills .pill.missing {
+  background: var(--alert-bg);
+  color: var(--alert);
+  border: 1px solid var(--alert-bg);
+  cursor: help;
+}
+.cockpit-mode-a-plan-progress {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: auto;
+  font-weight: 500;
+}
+.cockpit-mode-a-rationale {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.scout-tag, .fallback-tag {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 4px;
+  font-weight: 600;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.fallback-tag { background: var(--bg-elevated); color: var(--text-muted); }
+.cockpit-mode-a-plan-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+}
+.cockpit-mode-a-plan-steps li {
+  padding: 6px 0;
+  padding-left: 20px;
+  position: relative;
+  color: var(--text-secondary);
+  border-left: 1px solid var(--border);
+  margin-left: 4px;
+  line-height: 1.4;
+}
+.cockpit-mode-a-plan-steps li::before {
+  content: '○';
+  position: absolute;
+  left: -4px;
+  top: 3px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  font-size: 9px;
+  line-height: 1;
+}
+.cockpit-mode-a-plan-steps li.done { color: var(--text-muted); text-decoration: line-through; }
+.cockpit-mode-a-plan-steps li.done::before { content: '✓'; color: var(--accent); }
+.cockpit-mode-a-plan-steps li.current { color: var(--text-primary); font-weight: 500; }
+.cockpit-mode-a-plan-steps li.current::before { content: '▸'; color: var(--accent); }
+.cockpit-mode-a-plan-steps li.failed { color: var(--alert); }
+.cockpit-mode-a-plan-steps li.failed::before { content: '✗'; color: var(--alert); }
+.cockpit-mode-a-plan-steps li.dispatched { color: var(--text-primary); }
+.cockpit-mode-a-plan-steps li.dispatched::before { content: '◐'; color: var(--accent); animation: dotPulse 2s ease-in-out infinite; }
+/* Cockpit Visceral Pass — Block 1 (2026-05-18). Current step expands into a
+ * compact card surfacing scout-produced rationale + state tags + retry/
+ * needs-confirm badges already in the plan data. Non-current steps stay
+ * single-line (dashboard density preserved). */
+.cockpit-mode-a-plan-steps li.card {
+  padding: 8px 0 8px 20px;
+  margin: 4px 0 4px 4px;
+}
+.cockpit-mode-a-plan-steps .step-row-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cockpit-mode-a-plan-steps .step-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cockpit-mode-a-plan-steps .step-tag {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+.cockpit-mode-a-plan-steps .step-tag.tag-accent { background: var(--accent-bg); color: var(--accent); }
+.cockpit-mode-a-plan-steps .step-tag.tag-alert  { background: var(--alert-bg);  color: var(--alert); }
+.cockpit-mode-a-plan-steps .step-tag.tag-muted  { background: var(--bg-elevated); color: var(--text-muted); }
+.cockpit-mode-a-plan-steps .step-rationale {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cockpit-mode-a-plan-steps li.card:hover .step-rationale {
+  white-space: normal;
+}
+.cockpit-mode-a-plan-steps .step-needs-confirm {
+  font-size: 10px;
+  color: var(--alert);
+  margin-left: 2px;
+}
+/* Visceral fullmock — work-ticket meta + live tail on current step card */
+.cockpit-mode-a-plan-steps .step-meta-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--accent-muted);
+}
+.cockpit-mode-a-plan-steps .step-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.cockpit-mode-a-plan-steps .step-meta-row .meta-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  flex: 0 0 36px;
+}
+.cockpit-mode-a-plan-steps .step-meta-row .meta-val {
+  color: var(--text-secondary);
+  flex: 1;
+  word-break: break-word;
+}
+.cockpit-mode-a-plan-steps .step-live-tail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--accent);
+  font-style: italic;
+}
+.cockpit-mode-a-plan-steps .step-live-tail .live-dot {
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  flex: 0 0 auto;
+  box-shadow: 0 0 4px var(--accent);
+  animation: dotPulse 2s ease-in-out infinite;
+}
+.cockpit-mode-a-plan-steps .step-live-tail .live-elapsed {
+  color: var(--text-muted);
+  font-style: normal;
+}
+.cockpit-session-step-progress {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 500;
+  margin-left: 6px;
+}
+.cockpit-sessions-tier[data-tier="stale"] .cockpit-sessions-tier-header {
+  color: var(--text-muted);
+}
+.cockpit-mode-a-plan-empty {
+  list-style: none;
+  padding: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+}
+.cockpit-mode-a-plan-empty code {
+  background: var(--bg-base);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--accent);
+}
+.cockpit-mode-a-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.cockpit-mode-a-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-family: var(--font);
+  font-weight: 500;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.cockpit-mode-a-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.cockpit-mode-a-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.cockpit-mode-a-btn-primary {
+  border-color: var(--accent-muted);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+/* NEEDS YOU escalation rows */
+.cockpit-needs-list { margin-top: 8px; }
+.cockpit-needs-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.cockpit-needs-row:first-child { border-top: none; }
+.cockpit-needs-reason { color: var(--alert); font-weight: 600; font-size: 12px; }
+.cockpit-needs-body { color: var(--text-primary); font-size: 13px; line-height: 1.4; }
+.cockpit-needs-actions { display: flex; gap: 6px; margin-top: 2px; }
+.cockpit-ack-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-family: var(--font);
+  font-weight: 500;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.cockpit-ack-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.cockpit-needs-empty { color: var(--text-muted); font-style: italic; font-size: 12px; padding: 6px 0; }
+
+/* ============================================================
+   Todolist — unified "NEXT UP" list
+   ============================================================ */
+.cockpit-todolist-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+}
+.cockpit-todolist-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 12px;
+  padding: 8px 0;
+}
+.cockpit-todo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  transition: background var(--dur-micro) var(--ease-out);
+}
+.cockpit-todo-row:last-of-type { border-bottom: none; }
+.cockpit-todo-row:hover { background: var(--bg-surface); }
+/* Reorder: label first (biggest), source after (gray), button last (Go) */
+.cockpit-todo-row .cockpit-todo-label {
+  order: 1;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.cockpit-todo-row .cockpit-todo-source-pill { order: 2; }
+.cockpit-todo-row .cockpit-todo-action-btn { order: 3; }
+.cockpit-todo-row .cockpit-todo-lane-check,
+.cockpit-todo-row .cockpit-todo-lane-na { order: 0; }
+.cockpit-todo-lane-check {
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+.cockpit-todo-lane-na {
+  width: 13px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+/* Source pill: demoted to small grey label (design preview parity).
+   No background, just muted text — source is secondary info, not primary. */
+.cockpit-todo-source-pill {
+  font-size: 10px;
+  padding: 0;
+  border-radius: 0;
+  background: none !important;
+  color: var(--text-muted) !important;
+  font-weight: 400;
+  flex: 0 0 auto;
+  text-transform: lowercase;
+  letter-spacing: 0;
+  min-width: 56px;
+  text-align: right;
+}
+.cockpit-todo-source-pill.mentor_todo,
+.cockpit-todo-source-pill.user_todo,
+.cockpit-todo-source-pill.agent_proposal {
+  background: none !important;
+  color: var(--text-muted) !important;
+}
+.cockpit-todo-label {
+  flex: 1;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cockpit-todo-action-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-family: var(--font);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cockpit-todo-action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+/* Unified Go button — same regardless of source */
+.cockpit-todo-action-btn.approve, .cockpit-todo-action-btn.dispatch {
+  border-color: var(--accent-muted);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+/* TOP-2 audit: Go button hover went from accent-bg (8%) to (15%) —
+   indistinguishable. Now filled-accent + on-accent text so the
+   primary action is unmistakable. */
+.cockpit-todo-action-btn.approve:hover, .cockpit-todo-action-btn.dispatch:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+.cockpit-todolist-footer {
+  margin-top: 6px;
+  display: flex;
+  justify-content: flex-end;
+}
+#cockpit-todo-lane-btn {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-family: var(--font);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+#cockpit-todo-lane-btn:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+#cockpit-todo-lane-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.cockpit-todo-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+#cockpit-todo-add-input {
+  flex: 1;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+#cockpit-todo-add-input:focus { border-color: var(--accent); }
+#cockpit-todo-add-input::placeholder { color: var(--text-muted); }
+#cockpit-todo-add-send {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: var(--font);
+  font-weight: 600;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+#cockpit-todo-add-send:hover { background: var(--accent-hover-bg); }
+.cockpit-todo-add-status { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+/* ============================================================
+   Lanes (continuous iteration)
+   ============================================================ */
+.cockpit-lane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.cockpit-lane-header .cockpit-section-title { margin-bottom: 0; flex: 1; }
+#cockpit-lane-new-btn {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-family: var(--font);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+#cockpit-lane-new-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.cockpit-lane-list { display: flex; flex-direction: column; gap: 6px; }
+.cockpit-lane-row {
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+.cockpit-lane-row:hover { border-color: var(--border-focus); }
+.cockpit-lane-head { display: flex; align-items: center; gap: 8px; }
+.cockpit-lane-state {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+.cockpit-lane-row.RUNNING .cockpit-lane-state { background: var(--accent-bg); color: var(--accent); }
+.cockpit-lane-row.PENDING .cockpit-lane-state { background: var(--bg-elevated); color: var(--text-muted); }
+.cockpit-lane-row.REVIEW .cockpit-lane-state { background: var(--accent-bg); color: var(--accent-muted); }
+.cockpit-lane-row.PAUSED .cockpit-lane-state { background: var(--bg-elevated); color: var(--text-muted); }
+.cockpit-lane-row.DONE .cockpit-lane-state { background: var(--bg-elevated); color: var(--text-muted); }
+.cockpit-lane-progress { flex: 1; color: var(--text-secondary); font-size: 10px; }
+.cockpit-lane-actions { display: flex; gap: 4px; }
+.cockpit-lane-actions button {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-family: var(--font);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.cockpit-lane-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.cockpit-lane-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Lane create form */
+.cockpit-lane-create {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+#cockpit-lane-textarea {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+}
+.cockpit-lane-create-actions { display: flex; gap: 6px; margin-top: 6px; }
+.cockpit-lane-create-status { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+/* ============================================================
+   Steer — message agent
+   ============================================================ */
+.cockpit-steer-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.cockpit-steer-row { display: flex; gap: 6px; align-items: center; }
+#cockpit-steer-target {
+  flex: 0 0 auto;
+  max-width: 140px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+#cockpit-steer-input {
+  flex: 1;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+#cockpit-steer-input:focus { border-color: var(--accent); }
+#cockpit-steer-input:disabled, #cockpit-steer-send:disabled { opacity: 0.4; cursor: not-allowed; }
+#cockpit-steer-send {
+  padding: 4px 10px;
+  font-size: 10px;
+  font-family: var(--font);
+  font-weight: 500;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+#cockpit-steer-send:hover:not(:disabled) { background: var(--accent-hover-bg); }
+.cockpit-steer-status { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+/* ============================================================
+   Sessions
+   ============================================================ */
+.cockpit-sessions-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+/* Cockpit Visceral Pass — Block 2 (2026-05-18). Sessions render in two
+ * tiers: WORKING always-expanded on top (live activity glanceable),
+ * IDLE/OTHER collapsed by default (drill-in). No new color tokens —
+ * tier headers reuse the muted uppercase pattern from .module-title. */
+.cockpit-sessions-tier {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cockpit-sessions-tier-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 6px 0 2px 0;
+}
+.cockpit-sessions-tier-header .tier-count {
+  color: var(--text-secondary);
+}
+.cockpit-sessions-tier-header.collapsible {
+  cursor: pointer;
+  user-select: none;
+}
+.cockpit-sessions-tier-header.collapsible:hover {
+  color: var(--text-secondary);
+}
+.cockpit-sessions-tier-header.collapsible::after {
+  content: '▾';
+  margin-left: 4px;
+  transition: transform var(--dur-short) var(--ease-out);
+  display: inline-block;
+}
+.cockpit-sessions-tier.collapsed .cockpit-sessions-tier-header.collapsible::after {
+  transform: rotate(-90deg);
+}
+.cockpit-sessions-tier-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cockpit-sessions-tier.collapsed .cockpit-sessions-tier-body {
+  display: none;
+}
+.cockpit-session-elapsed {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: auto;
+  font-weight: 500;
+}
+.cockpit-session-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--dur-micro) var(--ease-out);
+  font-size: 12px;
+}
+.cockpit-session-row:hover {
+  border-color: var(--accent-muted);
+  background: var(--bg-elevated);
+  transform: translateY(-1px);
+}
+.cockpit-session-head { display: flex; align-items: center; gap: 10px; }
+.cockpit-session-state {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+.cockpit-session-state.working {
+  background: var(--accent-bg);
+  color: var(--accent);
+  position: relative;
+}
+.cockpit-session-state.working::before {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: dotPulse 2s ease-in-out infinite;
+  box-shadow: 0 0 4px var(--accent);
+}
+.cockpit-session-state.blocked { background: var(--alert-bg); color: var(--alert); }
+.cockpit-session-state.idle, .cockpit-session-state.stale { background: var(--bg-elevated); color: var(--text-muted); }
+.cockpit-session-name {
+  flex: 1;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+.cockpit-session-age {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.cockpit-session-task {
+  color: var(--text-secondary);
+  margin-left: 8px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cockpit-session-task .label {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+/* ============================================================
+   Checkpoints
+   Project-level SAFETY/REWIND module hidden — checkpoints render
+   inline inside each session card via dev-overlay.js injection.
+   ============================================================ */
+.cockpit-safety { display: none; }
+
+/* Session-embedded checkpoint list (injected by dev-overlay) */
+.session-checkpoints {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-checkpoints-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.session-checkpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-micro) var(--ease-out);
+}
+.session-checkpoint-row:hover { background: var(--bg-base); }
+.session-checkpoint-sha {
+  color: var(--accent);
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 10px;
+  background: var(--accent-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+.session-checkpoint-label { flex: 1; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-checkpoint-ts { color: var(--text-muted); font-size: 10px; flex: 0 0 auto; }
+.session-checkpoint-btn {
+  padding: 1px 8px;
+  font-size: 10px;
+  font-family: var(--font);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+  flex: 0 0 auto;
+}
+.session-checkpoint-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.cockpit-checkpoints-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+/* Cockpit Visceral Pass — Block 3 (2026-05-18). Rewind always-on pill +
+ * popover + undo toast. No new colors — accent for "active safety net",
+ * muted for empty/idle. Inline diff preview replaces native confirm/alert. */
+.cockpit-safety-strip {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px 0;
+  position: relative;
+}
+.cockpit-rewind-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: var(--font);
+  font-weight: 500;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.cockpit-rewind-pill:hover {
+  border-color: var(--accent);
+}
+.cockpit-rewind-pill.empty {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: help;
+}
+.cockpit-rewind-pill .rewind-glyph {
+  font-size: 13px;
+  line-height: 1;
+}
+.cockpit-rewind-popover {
+  position: absolute;
+  top: 32px;
+  left: 12px;
+  right: 12px;
+  max-width: 480px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.30);
+  z-index: 50;
+  font-size: 12px;
+}
+.rewind-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.rewind-popover-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+.rewind-popover-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.rewind-popover-close:hover { color: var(--accent); }
+.rewind-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.rewind-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out);
+}
+.rewind-popover-row:hover { background: var(--bg-surface); }
+.rewind-popover-row .row-label {
+  flex: 1;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rewind-popover-row .row-age {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.rewind-popover-row .row-sha {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font);
+}
+.rewind-popover-row .row-action {
+  font-size: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.rewind-popover-row .row-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.rewind-popover-preview {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.rewind-popover-preview .preview-line {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.rewind-popover-row .row-diff {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: 4px;
+}
+.rewind-popover-preview .preview-files {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  margin: 6px 0;
+  line-height: 1.4;
+}
+.rewind-popover-preview .preview-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.rewind-popover-preview button {
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font);
+  border: 1px solid var(--border);
+}
+.rewind-popover-preview .btn-confirm {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.rewind-popover-preview .btn-confirm:hover {
+  background: var(--accent-muted);
+}
+.rewind-popover-preview .btn-cancel {
+  background: none;
+  color: var(--text-secondary);
+}
+.rewind-popover-preview .btn-cancel:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* Toast — used by rewind undo, lives at top, fades after 5s */
+.cockpit-toast-root {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  max-width: 380px;
+}
+.cockpit-toast-root code {
+  background: var(--bg-surface);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--accent);
+}
+.cockpit-checkpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  font-size: 12px;
+  transition: background var(--dur-micro) var(--ease-out);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+.cockpit-checkpoint-row:hover {
+  background: var(--bg-surface);
+  border-color: var(--border);
+}
+.cockpit-checkpoint-sha {
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--font);
+  font-weight: 600;
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  background: var(--accent-bg);
+  border-radius: var(--radius-sm);
+}
+.cockpit-checkpoint-label {
+  flex: 1;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.cockpit-checkpoint-ts { color: var(--text-muted); font-size: 11px; flex: 0 0 auto; }
+.cockpit-rewind-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-family: var(--font);
+  font-weight: 500;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.cockpit-rewind-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+/* ============================================================
+   Side cards — Goal / Rules / Interp / Pre-PR / Recovery / Managed
+   ============================================================ */
+.goal-card, .rules-card, .interp-card, .pre-pr-card,
+.prompt-pack-card, .recovery-card, .managed-card, .mentor-card {
+  margin: 8px 12px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  transition: background var(--dur-medium) var(--ease-out),
+              border-color var(--dur-medium) var(--ease-out);
+}
+.goal-card.goal-empty { border-style: dashed; }
+.goal-label, .rules-label, .recovery-label, .managed-label,
+.prompt-pack-label, .mentor-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 6px;
+}
+#goal-line1, #rules-line1, #interp-line1, #pre-pr-line1,
+#prompt-pack-line1, #recovery-line1, #managed-line1, #mentor-line1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#goal-title { color: var(--text-primary); font-weight: 500; }
+.goal-meta, .rules-counts, .interp-meta, .managed-meta,
+.recovery-counts, .pre-pr-meta, .prompt-pack-meta { color: var(--text-muted); font-size: 10px; }
+.goal-outcome { color: var(--text-secondary); margin-top: 4px; }
+.goal-actions, .recovery-action, .managed-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.goal-actions a, .recovery-action a, .interp-refresh a, .pre-pr-refresh a, .pre-pr-copy a,
+.prompt-pack-copy, .prompt-pack-close, .managed-action a,
+.managed-action-inline a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 10px;
+  transition: color var(--dur-micro) var(--ease-out);
+}
+.goal-actions a:hover, .recovery-action a:hover { color: var(--accent-muted); text-decoration: underline; }
+
+.rules-default-tag, .interp-mode {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 500;
+}
+.rules-preview, .interp-summary, .pre-pr-summary, .pre-pr-checklist,
+.pre-pr-risks, .interp-risks, .interp-next, .prompt-pack-text,
+.recovery-last-ready, .recovery-anchors, .managed-body, .managed-profile,
+.managed-latest, .managed-evidence, .managed-review {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.prompt-pack-text {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  white-space: pre-wrap;
+  font-family: var(--font);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.managed-status { color: var(--text-secondary); font-size: 11px; }
+.managed-btn {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-family: var(--font);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.managed-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.managed-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.managed-area { margin-top: 6px; }
+.managed-area-head {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.managed-textarea {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  resize: vertical;
+}
+.managed-textarea:focus { border-color: var(--accent); }
+.managed-providers { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.managed-provider {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+.managed-disclosure {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.recovery-confidence {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+/* Mentor card (askMentor) */
+.mentor-history-select, #mentor-history-select {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  outline: none;
+}
+.mentor-chat {
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  font-size: 11px;
+}
+.mentor-empty { color: var(--text-muted); font-style: italic; }
+.mentor-loading { color: var(--text-secondary); font-style: italic; }
+.mentor-input-area { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.mentor-provider-row { display: flex; align-items: center; gap: 8px; }
+.mentor-prov-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; }
+.mentor-provider-opt {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mentor-provider-opt.active { background: var(--accent-bg); border-color: var(--accent-muted); color: var(--accent); }
+.mentor-textarea {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  resize: vertical;
+}
+.mentor-ask-btn, #mentor-ask-btn {
+  padding: 4px 12px;
+  font-size: 10px;
+  font-family: var(--font);
+  font-weight: 500;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  align-self: flex-end;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.mentor-ask-btn:hover { background: var(--accent-hover-bg); }
+
+/* ============================================================
+   Coordination / Pulse strips
+   ============================================================ */
+.coord-strip, .pulse {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  background: var(--bg-surface);
+}
+.pulse.pulse-hidden { display: none; }
+#coord-strip-line, #pulse-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.coord-strip-dot, .pulse-dot { color: var(--text-muted); }
+.coord-strip-dot.active, .pulse-dot.active { color: var(--accent); }
+.coord-strip-dot.alert, .pulse-dot.alert { color: var(--alert); }
+#coord-strip-level, #pulse-level {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+#coord-strip-headline, #pulse-headline { color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coord-strip-show-all {
+  font-size: 10px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+.coord-strip-top { margin-top: 4px; color: var(--text-muted); font-size: 10px; }
+
+/* ============================================================
+   Summary / counts / tabs / Run Log / Tasks / Reports / Coord views
+   (legacy multi-card mode — keep functional)
+   ============================================================ */
+#summary {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+#summary-meta { color: var(--text-muted); font-size: 10px; }
+.row { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 4px; }
+.k { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 4px; }
+.v { color: var(--text-primary); font-weight: 500; }
+.v.zero, .zero { color: var(--text-muted); font-weight: 400; }
+.v.warn { color: var(--text-secondary); }
+.v.alert { color: var(--alert); }
+
+#tabs {
+  display: flex;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.tab {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font);
+  transition: all var(--dur-short) var(--ease-out);
+}
+.tab:hover { color: var(--text-secondary); }
+.tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+#view-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.view { padding: 8px 12px; }
+
+#runlog-list, #tasks-list, #sessions-list, #reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#runlog-list > *, #tasks-list > *, #sessions-list > *, #reports-list > * {
+  padding: 4px 0;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+  animation: fadeSlide var(--dur-medium) var(--ease-out) both;
+}
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#tasks-filter-chip {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+#reports-toolbar { display: flex; gap: 12px; padding: 6px 0; }
+#reports-toolbar a { color: var(--accent); text-decoration: none; font-size: 11px; }
+#reports-toolbar a:hover { text-decoration: underline; }
+
+.coord-section { margin-bottom: 12px; }
+.coord-section-head {
+  font-size: 9px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.coord-action {
+  margin-top: 4px;
+}
+.coord-action a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+}
+.coord-action a:hover { text-decoration: underline; }
+
+/* ============================================================
+   Timeline (L2 session drilldown)
+   ============================================================ */
+#view-timeline {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px;
+}
+.tl-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.tl-back {
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  text-decoration: none;
+}
+.tl-back:hover { text-decoration: underline; }
+.tl-titlebar { flex: 1; }
+.tl-title { color: var(--text-primary); font-weight: 600; font-size: 13px; }
+.tl-meta { color: var(--text-muted); font-size: 10px; }
+.tl-list { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.tl-list > * {
+  padding: 4px 6px;
+  font-size: 11px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  animation: fadeSlide var(--dur-medium) var(--ease-out) both;
+}
+
+/* ============================================================
+   Unassigned view
+   ============================================================ */
+#view-unassigned {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px;
+}
+.ua-header { margin-bottom: 8px; }
+#ua-title { color: var(--text-primary); font-weight: 600; font-size: 13px; }
+#ua-db-path { color: var(--text-muted); font-size: 10px; }
+.ua-counts { color: var(--text-secondary); font-size: 11px; margin-top: 4px; }
+.sess-group-title {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 8px 0 4px;
+}
+
+/* ============================================================
+   Modal
+   ============================================================ */
+#modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+#modal-overlay.open { display: flex; }
+.modal-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  min-width: 320px;
+  max-width: 480px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+  color: var(--text-primary);
+}
+.modal-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-cancel { text-align: right; margin-top: 12px; }
+.modal-cancel a {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  text-decoration: none;
+}
+.modal-cancel a:hover { color: var(--accent); }
+
+/* ============================================================
+   Goal form (inside modal-body) — CDP debug 2026-05-15 fix
+   Previously had no rules → all label/input/textarea rendered
+   inline. Restored vertical stack + readable inputs.
+   ============================================================ */
+.goal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.goal-form label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+.goal-form label:first-child {
+  margin-top: 0;
+}
+.goal-form-hint {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: 4px;
+}
+.goal-form input[type="text"],
+.goal-form textarea {
+  width: 100%;
+  display: block;
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 6px 8px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  resize: vertical;
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+.goal-form input[type="text"]:focus,
+.goal-form textarea:focus {
+  border-color: var(--accent);
+}
+.goal-form textarea {
+  min-height: 56px;
+  line-height: 1.45;
+}
+.goal-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+.goal-form-actions button {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out),
+              border-color var(--dur-micro) var(--ease-out);
+}
+.goal-form-actions button:hover {
+  background: var(--accent-muted);
+  border-color: var(--accent-muted);
+}
+.goal-form-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   First-launch wizard
+   ============================================================ */
+#first-launch-wizard {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-base);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.flw-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  max-width: 380px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.flw-screen { display: none; }
+.flw-screen.active { display: block; animation: fadeSlide var(--dur-medium) var(--ease-out) both; }
+.flw-title {
+  font-size: 15px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.flw-description, .flw-bullets {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.flw-bullets li { margin: 4px 0; }
+.flw-actions { display: flex; gap: 8px; margin-top: 16px; }
+.flw-btn-primary {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-family: var(--font);
+  font-weight: 500;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.flw-btn-primary:hover { background: var(--accent-hover-bg); }
+.flw-btn-secondary {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-family: var(--font);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.flw-btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.flw-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin: 12px 0;
+}
+#flw-folder-chosen { color: var(--text-secondary); font-size: 11px; flex: 1; }
+.flw-error { color: var(--alert); font-size: 11px; margin-top: 8px; }
+.flw-success-check { font-size: 32px; color: var(--accent); text-align: center; margin: 12px 0; }
+.flw-next-steps { color: var(--text-secondary); font-size: 11px; }
+
+/* Cockpit help overlay — hidden by default, shown as floating panel when toggled */
+.cockpit-help-overlay {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  z-index: 1000;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.cockpit-help-overlay.open { display: block; animation: fadeSlide var(--dur-medium) var(--ease-out) both; }
+.cockpit-help-overlay h3 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 18px 0 8px;
+}
+.cockpit-help-overlay h3:first-of-type { margin-top: 4px; }
+.cockpit-help-overlay p { margin-bottom: 8px; color: var(--text-secondary); }
+.cockpit-help-overlay code {
+  background: var(--bg-base);
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--accent);
+  font-size: 11px;
+  border: 1px solid var(--border);
+}
+.cockpit-help-overlay strong { color: var(--text-primary); }
+.cockpit-help-overlay em { color: var(--accent); font-style: normal; }
+.cockpit-help-close {
+  position: absolute;
+  top: 12px; right: 12px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  width: 24px; height: 24px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 11px;
+  transition: all var(--dur-short) var(--ease-out);
+}
+.cockpit-help-close:hover {
+  border-color: var(--alert);
+  color: var(--alert);
+}
+
+/* Cockpit onboarding empty state */
+.cockpit-onboarding {
+  padding: 24px;
+  text-align: center;
+}
+.cockpit-onboarding-title { font-size: 13px; color: var(--text-primary); font-weight: 600; margin-bottom: 8px; }
+.cockpit-onboarding-message { font-size: 11px; color: var(--text-secondary); margin-bottom: 16px; }
+.cockpit-onboarding-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.cockpit-onboarding-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: all var(--dur-short) var(--ease-out);
+}
+.cockpit-onboarding-link:hover { background: var(--accent-bg); border-color: var(--accent-muted); }
+
+/* ============================================================
+   Animations — global
+   ============================================================ */
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; text-shadow: 0 0 4px currentColor; }
+  50% { opacity: 0.65; text-shadow: 0 0 10px currentColor; }
+}
+
+/* ============================================================
+   Light theme — box-shadow instead of borders on cards
+   ============================================================ */
+html[data-cairn-theme="light"] #header { background: var(--bg-elevated); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+html[data-cairn-theme="light"] .pcard,
+html[data-cairn-theme="light"] .goal-card,
+html[data-cairn-theme="light"] .rules-card,
+html[data-cairn-theme="light"] .interp-card,
+html[data-cairn-theme="light"] .pre-pr-card,
+html[data-cairn-theme="light"] .prompt-pack-card,
+html[data-cairn-theme="light"] .recovery-card,
+html[data-cairn-theme="light"] .managed-card,
+html[data-cairn-theme="light"] .mentor-card,
+html[data-cairn-theme="light"] .cockpit-mode-a-plan,
+html[data-cairn-theme="light"] .cockpit-lane-row,
+html[data-cairn-theme="light"] .cockpit-session-row {
+  box-shadow: var(--shadow);
+}
+
+/* ============================================================
+   Misc — code / strong / a
+   ============================================================ */
+a { color: var(--accent); text-decoration: none; transition: color var(--dur-micro) var(--ease-out); }
+a:hover { color: var(--accent-muted); text-decoration: underline; }
+strong, b { color: var(--text-primary); font-weight: 600; }
+code { background: var(--bg-elevated); padding: 1px 4px; border-radius: 3px; color: var(--accent); font-family: var(--font); font-size: 0.95em; }
+</style>
+</head>
+<body>
+<!-- B4 First-launch wizard — shown on first run only (hidden after markOnboarded) -->
+<div id="first-launch-wizard" hidden>
+  <div class="flw-card">
+    <!-- Screen 1: Welcome -->
+    <div class="flw-screen active" id="flw-screen-1">
+      <div class="flw-title">Welcome to Cairn</div>
+      <ul class="flw-bullets">
+        <li>Your AI coding workers' co-pilot dashboard</li>
+        <li>Watches Claude Code / Cursor / Codex sessions</li>
+        <li>One panel to see them all, steer them, undo their mistakes</li>
+      </ul>
+      <div class="flw-actions">
+        <button class="flw-btn-primary" id="flw-btn-ready" type="button">Let's add a project →</button>
+        <button class="flw-btn-secondary" id="flw-btn-skip" type="button">Skip for now (advanced)</button>
+      </div>
+    </div>
+    <!-- Screen 2: Add your first project -->
+    <div class="flw-screen" id="flw-screen-2">
+      <div class="flw-title">Add your first project</div>
+      <div class="flw-description">
+        Pick a folder containing your code.<br>
+        Cairn will register it and install the MCP server so Claude Code sees Cairn automatically.
+      </div>
+      <div class="flw-folder-row">
+        <button class="flw-btn-secondary" id="flw-btn-choose" type="button">Choose folder…</button>
+        <span id="flw-folder-chosen">No folder selected</span>
+      </div>
+      <div class="flw-error" id="flw-error-2"></div>
+      <div class="flw-actions">
+        <button class="flw-btn-primary" id="flw-btn-continue" type="button" disabled>Continue →</button>
+        <button class="flw-btn-secondary" id="flw-btn-back" type="button">← Back</button>
+      </div>
+    </div>
+    <!-- Screen 3: All set -->
+    <div class="flw-screen" id="flw-screen-3">
+      <div class="flw-success-check">✅</div>
+      <div class="flw-title">Done!</div>
+      <ul class="flw-next-steps" id="flw-next-steps">
+        <li>Open Claude Code in your project folder</li>
+        <li>It will automatically register with Cairn</li>
+        <li>Come back here to see it light up</li>
+      </ul>
+      <div class="flw-actions">
+        <button class="flw-btn-primary" id="flw-btn-close" type="button">Close wizard</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <!--
+    The panel has two top-level views:
+      L1 = #view-projects-list  (default; project cards + Unassigned)
+      L2 = #view-project        (Quick-Slice surface, scoped to selectedProject)
+    Header / footer are shared. The header changes labels per view;
+    the menu lives in the header.
+  -->
+  <div id="header">
+    <span id="workspace-label">Cairn — Projects</span>
+    <span id="db-path"></span>
+    <button id="menu-btn" type="button" title="Menu">⋯</button>
+    <button id="close-btn" type="button" title="Hide panel (Esc)">×</button>
+    <div id="menu-pop">
+      <button id="menu-back-to-projects" type="button" hidden>← Back to projects</button>
+      <button id="menu-add-project" type="button">Add project…</button>
+      <button id="menu-open-legacy" type="button">Open Legacy Inspector</button>
+    </div>
+  </div>
+
+  <!-- L1 -->
+  <div id="view-projects-list">
+    <div id="projects-list-body">
+      <div class="placeholder">loading…</div>
+    </div>
+    <div class="pl-add" id="pl-add-btn">＋ Add project…</div>
+  </div>
+
+  <!-- L2 (hidden by default; revealed when user picks a project) -->
+  <div id="view-project" hidden>
+    <!--
+      Goal Card (Goal Mode v1) — user-authored goal for the active
+      project. Cairn does NOT infer goals; this is the headline the
+      user wrote down. Persists in ~/.cairn/projects.json.
+    -->
+    <div id="goal-card" class="goal-card goal-empty">
+      <div id="goal-empty-line">
+        <span class="goal-label">GOAL</span>
+        <a id="goal-set-link">Set goal…</a>
+      </div>
+      <div id="goal-filled" hidden>
+        <div id="goal-line1">
+          <span class="goal-label">GOAL</span>
+          <span id="goal-title"></span>
+          <span id="goal-meta" class="goal-meta"></span>
+        </div>
+        <div id="goal-outcome" class="goal-outcome"></div>
+        <div id="goal-actions" class="goal-actions">
+          <a id="goal-edit-link">edit</a>
+          <a id="goal-clear-link">clear</a>
+        </div>
+      </div>
+    </div>
+    <!--
+      Rules Card (governance v1) — user-authored project policy.
+      Cairn doesn't enforce these; they feed Pre-PR Gate / Interpretation
+      / Prompt Pack as advisory context. Default rules render with a
+      "(default)" tag so users know it's a template.
+    -->
+    <div id="rules-card" class="rules-card">
+      <div id="rules-line1">
+        <span class="rules-label">RULES</span>
+        <span id="rules-default-tag" class="rules-default-tag" hidden>(default)</span>
+        <span id="rules-counts" class="rules-counts"></span>
+        <a id="rules-edit-link">edit</a>
+        <a id="rules-clear-link" hidden>clear</a>
+      </div>
+      <div id="rules-preview" class="rules-preview"></div>
+    </div>
+    <!--
+      Goal Interpretation (advisory). Either:
+        - deterministic: pure derivation from goal + pulse + activity
+        - llm: an LLM rephrased the deterministic finding (advisory only)
+      Hidden when there's no goal (interpretation has no anchor) or
+      no last-refreshed result yet.
+    -->
+    <div id="interp-card" class="interp-card" hidden>
+      <div id="interp-line1">
+        <span id="interp-mode-chip" class="interp-mode">DETERMINISTIC</span>
+        <span id="interp-meta" class="interp-meta"></span>
+        <a id="interp-refresh-link" class="interp-refresh">Refresh</a>
+      </div>
+      <div id="interp-summary" class="interp-summary"></div>
+      <div id="interp-risks" class="interp-risks" hidden></div>
+      <div id="interp-next" class="interp-next" hidden></div>
+    </div>
+    <!--
+      Pre-PR Gate (advisory). Status reflects deterministic rules
+      (open blocker / failed outcome / failed task / open conflict
+      → not_ready). LLM rewrites the checklist tone but never the
+      status. Hidden until the user clicks Refresh once.
+    -->
+    <div id="pre-pr-card" class="pre-pr-card" hidden>
+      <div id="pre-pr-line1">
+        <span id="pre-pr-status" class="pre-pr-status">UNKNOWN</span>
+        <span id="pre-pr-meta" class="pre-pr-meta"></span>
+        <a id="pre-pr-refresh-link" class="pre-pr-refresh">Refresh</a>
+        <a id="pre-pr-copy-link" class="pre-pr-copy">copy checklist</a>
+        <a id="pre-pr-prompt-pack-link" class="pre-pr-copy">Generate next worker prompt</a>
+      </div>
+      <div id="pre-pr-summary" class="pre-pr-summary" hidden></div>
+      <div id="pre-pr-checklist" class="pre-pr-checklist" hidden></div>
+      <div id="pre-pr-risks" class="pre-pr-risks" hidden></div>
+    </div>
+    <!--
+      Goal Loop Prompt Pack preview. Hidden by default; revealed
+      after the user clicks Generate. The textarea holds the full
+      composed prompt; "copy prompt" puts it on the clipboard.
+      Cairn does NOT send this — it's for the user to paste.
+    -->
+    <div id="prompt-pack-card" class="prompt-pack-card" hidden>
+      <div id="prompt-pack-line1">
+        <span class="prompt-pack-label">NEXT WORKER PROMPT</span>
+        <span id="prompt-pack-meta" class="prompt-pack-meta"></span>
+        <a id="prompt-pack-copy" class="prompt-pack-copy">copy prompt</a>
+        <a id="prompt-pack-close" class="prompt-pack-close">×</a>
+      </div>
+      <textarea id="prompt-pack-text" class="prompt-pack-text" readonly rows="12"></textarea>
+    </div>
+    <!--
+      Recovery Card — surfaces Cairn's checkpoint primitive (read-only).
+      Confidence badge (Good / Limited / None) + last READY anchor +
+      copy-prompt action. Cairn does not execute rewind; the prompt
+      tells the user's agent how to inspect-then-rewind safely.
+    -->
+    <div id="recovery-card" class="recovery-card" hidden>
+      <div id="recovery-line1">
+        <span class="recovery-label">RECOVERY</span>
+        <span id="recovery-confidence" class="recovery-confidence">—</span>
+        <span id="recovery-counts" class="recovery-counts"></span>
+        <a id="recovery-copy-prompt-link" class="recovery-action">copy recovery prompt</a>
+        <a id="recovery-toggle-link" class="recovery-action">show anchors</a>
+      </div>
+      <div id="recovery-last-ready" class="recovery-last-ready" hidden></div>
+      <div id="recovery-anchors" class="recovery-anchors" hidden></div>
+    </div>
+    <!--
+      Managed Loop card — Cairn-managed external repo workflow. Compact
+      by default; expands to show profile, latest iteration, and the
+      seven user-triggered actions (register / start / generate prompt
+      / copy prompt / attach report / collect evidence / review / copy
+      next prompt seed). Every action is user-clicked. Cairn never
+      auto-launches a worker.
+    -->
+    <div id="managed-card" class="managed-card" hidden>
+      <div id="managed-line1">
+        <span class="managed-label">MANAGED LOOP</span>
+        <span id="managed-status" class="managed-status">unmanaged</span>
+        <span id="managed-meta" class="managed-meta"></span>
+        <a id="managed-toggle-link" class="managed-action">expand ▸</a>
+      </div>
+      <div id="managed-body" class="managed-body" hidden>
+        <div id="managed-profile" class="managed-profile">
+          <div class="placeholder">not registered as managed yet — click <code>register</code> below.</div>
+        </div>
+        <div id="managed-latest" class="managed-latest"></div>
+        <div id="managed-actions" class="managed-actions">
+          <button id="managed-btn-register"   type="button" class="managed-btn">register</button>
+          <button id="managed-btn-start"      type="button" class="managed-btn" disabled>start iteration</button>
+          <button id="managed-btn-prompt"     type="button" class="managed-btn" disabled>generate worker prompt</button>
+          <button id="managed-btn-copy-prompt"type="button" class="managed-btn" disabled>copy prompt</button>
+          <button id="managed-btn-evidence"   type="button" class="managed-btn" disabled>collect evidence</button>
+          <button id="managed-btn-review"     type="button" class="managed-btn" disabled>review iteration</button>
+          <button id="managed-btn-copy-seed"  type="button" class="managed-btn" disabled>copy next prompt seed</button>
+        </div>
+        <!--
+          Worker launch controls. Each button is one user click; Cairn
+          never auto-launches and never schedules subsequent runs.
+          The provider selector reflects what was found on PATH; an
+          unavailable provider keeps the row visible but disables the
+          launch button (so the user knows the option exists).
+        -->
+        <div id="managed-worker-area" class="managed-area">
+          <div class="managed-area-head">Worker</div>
+          <div id="managed-worker-providers" class="managed-providers">
+            <span class="placeholder">probing CLI providers…</span>
+          </div>
+          <div id="managed-worker-actions" class="managed-actions">
+            <button id="managed-btn-open-worker" type="button" class="managed-btn" disabled>open worker</button>
+            <button id="managed-btn-stop-worker" type="button" class="managed-btn" disabled>stop worker</button>
+            <button id="managed-btn-tail-worker" type="button" class="managed-btn" disabled>refresh tail</button>
+            <button id="managed-btn-extract"     type="button" class="managed-btn" disabled>extract report</button>
+          </div>
+          <div id="managed-worker-disclosure" class="managed-disclosure" hidden></div>
+          <div id="managed-worker-status" class="managed-evidence" hidden></div>
+          <div id="managed-worker-tail-area" hidden>
+            <div class="managed-area-head">tail log (last bytes)</div>
+            <textarea id="managed-worker-tail" class="managed-textarea" readonly rows="8"></textarea>
+          </div>
+        </div>
+        <div id="managed-prompt-area" class="managed-area" hidden>
+          <div class="managed-area-head">Worker prompt (copy-paste into Claude Code / Codex / Cursor)</div>
+          <textarea id="managed-prompt-text" class="managed-textarea" readonly rows="10"></textarea>
+        </div>
+        <div id="managed-report-area" class="managed-area">
+          <div class="managed-area-head">
+            Paste worker report
+            <a id="managed-attach-report-link" class="managed-action managed-action-inline">attach</a>
+          </div>
+          <textarea id="managed-report-text" class="managed-textarea" rows="6"
+            placeholder="# Round summary&#10;Completed:&#10;- ...&#10;Remaining:&#10;- ...&#10;Blockers:&#10;- ...&#10;Next steps:&#10;- ..."></textarea>
+        </div>
+        <div id="managed-evidence-summary" class="managed-evidence" hidden></div>
+        <div id="managed-review-summary" class="managed-review" hidden></div>
+        <div id="managed-seed-area" class="managed-area" hidden>
+          <div class="managed-area-head">Next prompt seed</div>
+          <textarea id="managed-seed-text" class="managed-textarea" readonly rows="3"></textarea>
+        </div>
+      </div>
+    </div>
+    <!--
+      Mentor — Mode A advisory chat (§12 D9 controlled deviation).
+      Only shown when CAIRN_DESKTOP_ENABLE_MUTATIONS=1 (preload exposes
+      window.cairn.askMentor). Multi-turn, on-ask only, per B2 §1/§6.3.
+      Read-only history IPC (listMentorHistory) always exposed.
+    -->
+    <div id="mentor-pane" class="mentor-card" hidden>
+      <div id="mentor-line1">
+        <span class="mentor-label">MENTOR</span>
+        <select id="mentor-history-select" class="mentor-history-select">
+          <option value="">history…</option>
+        </select>
+      </div>
+      <div id="mentor-chat" class="mentor-chat">
+        <div class="mentor-empty">Ask Mentor what to prioritize next…</div>
+      </div>
+      <div id="mentor-loading" class="mentor-loading" hidden>asking Mentor… ◌</div>
+      <div class="mentor-input-area">
+        <div class="mentor-provider-row">
+          <span class="mentor-prov-label">provider</span>
+          <label class="mentor-provider-opt">
+            <input type="radio" name="mentor-provider" value="claude-code" checked>
+            claude-code
+          </label>
+          <label class="mentor-provider-opt">
+            <input type="radio" name="mentor-provider" value="fixture-mentor">
+            fixture
+          </label>
+        </div>
+        <textarea id="mentor-question" class="mentor-textarea" rows="3"
+          placeholder="What should I work on next? (Enter = submit, Shift+Enter = newline)"></textarea>
+        <div class="mentor-ask-row">
+          <button id="mentor-ask-btn" type="button" class="mentor-ask-btn">Ask &#8594;</button>
+        </div>
+      </div>
+    </div>
+    <!--
+      Coordination strip — top 3 coordination signals on L2 hero.
+      Compact; click each to copy the relevant prompt; "show all" jumps
+      to the Coordination tab. Hidden when coordination_level === 'ok'
+      with no signals.
+    -->
+    <div id="coord-strip" class="coord-strip" hidden>
+      <div id="coord-strip-line">
+        <span id="coord-strip-dot" class="coord-strip-dot ok">●</span>
+        <span id="coord-strip-level">OK</span>
+        <span id="coord-strip-headline"></span>
+        <a id="coord-strip-show-all" class="coord-strip-show-all">show all ▸</a>
+      </div>
+      <div id="coord-strip-top" class="coord-strip-top" hidden></div>
+    </div>
+    <!--
+      Project Pulse — read-only derived signals.
+      Cairn does not recommend next agent actions; this strip surfaces
+      "what should the user look at right now?" only. PRODUCT.md §1.3 #4
+      / §7 principle 2 vetoes any copy that crosses into "Cairn decides
+      what to do next."
+    -->
+    <div id="pulse" class="pulse pulse-hidden">
+      <div id="pulse-line">
+        <span id="pulse-dot" class="pulse-dot ok">●</span>
+        <span id="pulse-level">OK</span>
+        <span id="pulse-headline">no issues to surface</span>
+      </div>
+      <div id="pulse-signals" hidden></div>
+    </div>
+    <div id="summary">
+      <div class="row"><span class="k">active agents</span>          <span class="v zero" id="s-agents">—</span></div>
+      <div class="row"><span class="k">tasks running/blocked/review</span><span class="v zero" id="s-tasks">—</span></div>
+      <div class="row"><span class="k">open blockers</span>          <span class="v zero" id="s-blockers">—</span></div>
+      <div class="row"><span class="k">failed outcomes</span>        <span class="v zero" id="s-fail">—</span></div>
+      <div class="row"><span class="k">open conflicts</span>         <span class="v zero" id="s-conflicts">—</span></div>
+      <div class="row"><span class="k">dispatches (last 1h)</span>   <span class="v zero" id="s-dispatch">—</span></div>
+      <div id="summary-meta">loading…</div>
+    </div>
+
+    <div id="tabs">
+      <button class="tab active" data-tab="runlog"   type="button">Run Log</button>
+      <button class="tab"        data-tab="tasks"    type="button">Tasks</button>
+      <button class="tab"        data-tab="sessions" type="button">Agent Activity</button>
+      <button class="tab"        data-tab="reports"  type="button">Reports</button>
+      <button class="tab"        data-tab="coord"    type="button">Coordination</button>
+    </div>
+
+    <div id="view-body">
+      <div id="view-runlog" class="view">
+        <div id="runlog-list">
+          <div class="placeholder">loading…</div>
+        </div>
+      </div>
+      <div id="view-tasks" class="view" hidden>
+        <div id="tasks-filter-chip"></div>
+        <div id="tasks-list">
+          <div class="placeholder">loading…</div>
+        </div>
+      </div>
+      <div id="view-sessions" class="view" hidden>
+        <div id="sessions-list">
+          <div class="placeholder">loading…</div>
+        </div>
+      </div>
+      <div id="view-reports" class="view" hidden>
+        <div id="reports-toolbar" class="reports-toolbar">
+          <a id="reports-add-link">+ Add report…</a>
+          <a id="reports-clear-link">clear all</a>
+        </div>
+        <div id="reports-list">
+          <div class="placeholder">no reports yet — paste an agent's "what I did / what's left / blockers" summary via Add report.</div>
+        </div>
+      </div>
+      <!--
+        Coordination tab — surfaces kernel-layer atomic capabilities
+        (scratchpad / conflicts / coordination signals) as a project
+        coordination surface. Three sections (top signals, handoff
+        context, conflicts) share one tab so navigation stays cheap.
+      -->
+      <div id="view-coord" class="view" hidden>
+        <div class="coord-section">
+          <div class="coord-section-head">Top coordination signals</div>
+          <div id="coord-signals-list">
+            <div class="placeholder">No coordination signals yet — fresh project or quiet period.</div>
+          </div>
+        </div>
+        <div class="coord-section">
+          <div class="coord-section-head">
+            Handoff context (scratchpad)
+            <a id="coord-handoff-prompt-link" class="coord-action">copy handoff prompt</a>
+          </div>
+          <div id="coord-scratchpad-list">
+            <div class="placeholder">No shared context recorded yet. Ask an agent to write a worker report or scratchpad note before handoff.</div>
+          </div>
+        </div>
+        <div class="coord-section">
+          <div class="coord-section-head">Conflicts</div>
+          <div id="coord-conflicts-list">
+            <div class="placeholder">No conflicts.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    L2 — single-project COCKPIT (panel-cockpit-redesign, Phase 2).
+    Replaces the old view-project Quick-Slice multi-card surface for users
+    who have a project selected. 5 modules per plan §3:
+      Module 1: state strip   (.cockpit-state)
+      Module 2: steer         (.cockpit-steer)
+      Module 3: activity feed (.cockpit-activity)
+      Module 4: safety/rewind (.cockpit-safety)
+      Module 5: needs-you     (.cockpit-needs)
+    Project tabs render above the modules; each tab opens its own cockpit
+    body. Wiring lives in panel.js renderCockpit() and setView('cockpit').
+  -->
+  <div id="view-cockpit" hidden>
+    <!-- Project tabs strip -->
+    <div id="cockpit-tabs" class="cockpit-tabs">
+      <!-- populated by renderCockpitTabs() -->
+    </div>
+
+    <!-- Onboarding / empty state (visible when no project / no goal) -->
+    <div class="cockpit-onboarding" id="cockpit-onboarding" hidden>
+      <div class="cockpit-onboarding-body">
+        <div class="cockpit-onboarding-title" id="cockpit-onboarding-title">📋 Inbox is empty.</div>
+        <div class="cockpit-onboarding-message" id="cockpit-onboarding-message">
+          Start by adding a project and defining a goal so Mentor can run.
+        </div>
+        <div class="cockpit-onboarding-actions">
+          <button id="cockpit-onboarding-add-project" type="button">＋ Add a project</button>
+          <button id="cockpit-onboarding-set-goal" type="button" hidden>✎ Define goal</button>
+          <a id="cockpit-onboarding-help" class="cockpit-onboarding-link" href="#">What is Cairn?</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Module 1: STATE STRIP -->
+    <div class="cockpit-state" id="cockpit-state">
+      <!-- Project run mode (CEO 2026-05-14 reframe).
+           Toggle relocated here from the Mentor module header — the
+           previous placement competed with the "Mode B · Lanes" section
+           below for the user's attention and made "Mode" ambiguous.
+           This is project-LEVEL state (how the whole project runs),
+           not a Mentor-local setting, so it lives at the top of the
+           project state strip. -->
+      <div class="cockpit-run-mode" id="cockpit-run-mode">
+        <span class="cockpit-run-mode-label">运行模式</span>
+        <div class="cockpit-mode-toggle" id="cockpit-mode-toggle" role="group" aria-label="项目运行模式 Autopilot / Copilot">
+          <button type="button" class="mode-pill" data-mode="A" id="cockpit-mode-A"
+                  title="Autopilot — Cairn 自动起草计划 + 自动派单 + 自动答疑，你不用管">
+            Autopilot
+          </button>
+          <button type="button" class="mode-pill active" data-mode="B" id="cockpit-mode-B"
+                  title="Copilot — Cairn 给排序建议，你主动选择委派（默认）">
+            Copilot
+          </button>
+        </div>
+        <span class="cockpit-run-mode-hint" id="cockpit-run-mode-hint"></span>
+      </div>
+      <!-- Goal row (2026-05-14 fix): persistent goal-edit entry in
+           cockpit view. Pre-this commit the only way to edit goal in
+           cockpit was the onboarding "Set goal" button — which hid
+           itself once a goal existed, leaving no way back to the
+           full editor. The legacy multi-card view had this; cockpit
+           was missing it. Always visible when there's a goal title;
+           shows ✎ 编辑 link → opens openGoalEditModal (full form
+           with success_criteria / desired_outcome / non_goals). -->
+      <div class="cockpit-goal-row" id="cockpit-goal-row" hidden>
+        <span class="cockpit-goal-label">GOAL</span>
+        <span class="cockpit-goal-title" id="cockpit-goal-title"></span>
+        <a class="cockpit-goal-edit-link" id="cockpit-goal-edit-link" href="#" title="编辑 goal（含 success_criteria）">✎ 编辑</a>
+        <!-- 2026-05-14 Q4 鸭总: 一键推送 — runs autoShip on this
+             project. Independent of auto_ship.enabled (manual override). -->
+        <button class="cockpit-ship-now-btn" id="cockpit-ship-now-btn" type="button"
+                title="推送当前项目所有未推送的 commit (会自动 commit dirty 改动)">
+          📤 推送
+        </button>
+        <span class="cockpit-ship-now-status" id="cockpit-ship-now-status"></span>
+      </div>
+      <!-- CAIRN.md ## Whole — Mentor's stable north-star sentence (schema v2, 2026-05-14).
+           Hidden when the project has no CAIRN.md or no Whole line. -->
+      <div class="cockpit-whole" id="cockpit-whole" hidden>
+        <span class="cockpit-whole-label">Whole</span>
+        <span class="cockpit-whole-text" id="cockpit-whole-text"></span>
+      </div>
+      <!-- Phase 5 (2026-05-14): "Mentor saved you N" productivity badge.
+           Counts kernel-side sync mentor decisions for this project. Hidden when 0. -->
+      <div class="cockpit-mentor-saved" id="cockpit-mentor-saved" hidden>
+        <span class="cockpit-mentor-saved-icon">⚡</span>
+        <span class="cockpit-mentor-saved-text" id="cockpit-mentor-saved-text"></span>
+      </div>
+      <!-- Phase 6 (2026-05-14): stale-agent + orphan task warning.
+           Surfaces when a process said status=active but its heartbeat
+           is stale by ≥ 5×ttl (or 5 min floor). Lists orphaned tasks
+           the silent agent left behind. Hidden when no stale agents. -->
+      <div class="cockpit-stale-agents" id="cockpit-stale-agents" hidden>
+        <span class="cockpit-stale-icon">⚠️</span>
+        <span class="cockpit-stale-text" id="cockpit-stale-text"></span>
+      </div>
+      <!-- Phase 7 (2026-05-14): "while you were away" 24h summary
+           (Project Glance per PRODUCT.md §4.1 US-P1). Shows tasks done
+           + Mentor decisions + conflicts touched + checkpoints made in
+           the last 24h. Hidden when all four counters are zero. -->
+      <div class="cockpit-last-24h" id="cockpit-last-24h" hidden>
+        <span class="cockpit-last-24h-label">Last 24h</span>
+        <span class="cockpit-last-24h-text" id="cockpit-last-24h-text"></span>
+      </div>
+      <div class="cockpit-status-line">
+        <span class="cockpit-status-dot" id="cockpit-status-dot">○</span>
+        <span class="cockpit-status-text" id="cockpit-status-text">loading…</span>
+      </div>
+      <div class="cockpit-status-detail" id="cockpit-status-detail">
+        <span class="cockpit-progress-bar" id="cockpit-progress-bar"></span>
+        <span class="cockpit-progress-text" id="cockpit-progress-text">—</span>
+      </div>
+      <!-- Cockpit Visceral Pass — Block 3 (2026-05-18). Rewind always-on
+           safety pill — first-screen visible, makes "cheap to undo" a
+           visual contract. Click → opens checkpoint popover. Empty state
+           still renders (dim) to teach users the concept. -->
+      <div class="cockpit-safety-strip" id="cockpit-safety-strip">
+        <button class="cockpit-rewind-pill" id="cockpit-rewind-pill" type="button"
+                title="Rewind to a saved checkpoint">
+          <span class="rewind-glyph">↶</span>
+          <span class="rewind-pill-text" id="cockpit-rewind-pill-text">checkpoints —</span>
+        </button>
+      </div>
+      <!-- Rewind popover (anchored under the pill; hidden by default) -->
+      <div class="cockpit-rewind-popover" id="cockpit-rewind-popover" hidden>
+        <div class="rewind-popover-header">
+          <span class="rewind-popover-title">Rewind to checkpoint</span>
+          <button class="rewind-popover-close" id="cockpit-rewind-popover-close" type="button"
+                  title="Close">×</button>
+        </div>
+        <div class="rewind-popover-list" id="cockpit-rewind-popover-list"></div>
+        <div class="rewind-popover-preview" id="cockpit-rewind-popover-preview" hidden></div>
+      </div>
+      <!-- Toast root — used by rewind undo + future ephemeral messages -->
+      <div class="cockpit-toast-root" id="cockpit-toast-root" hidden></div>
+      <div class="cockpit-current-task" id="cockpit-current-task">—</div>
+      <div class="cockpit-mentor-nudge" id="cockpit-mentor-nudge">—</div>
+    </div>
+
+    <!-- M2 MENTOR (A4 reorder 2026-05-14) — first-class primary module, was at
+         bottom. Status header (always visible) + escalations + Ack.
+         CEO grill约定 3+7+11: Mentor 上移到 M2 位置. -->
+    <div class="cockpit-mentor-module" id="cockpit-mentor-module">
+      <!-- Mode toggle moved to project state strip (top) on 2026-05-14:
+           it's project-level state, not Mentor-local; competed with the
+           "Mode B · Lanes" section title here. -->
+      <div class="cockpit-section-title">🧭 STATUS</div>
+      <div class="cockpit-mentor-status" id="cockpit-mentor-status">
+        <span class="cockpit-mentor-state" id="cockpit-mentor-state">—</span>
+        <span class="cockpit-mentor-last-check" id="cockpit-mentor-last-check"></span>
+        <span class="cockpit-mentor-today" id="cockpit-mentor-today"></span>
+      </div>
+      <!-- Signal-cat refactor commit A (2026-05-15): pill row surfacing
+           which signal categories (~~category placeholder names per
+           mentor-collect.CATEGORY_ALIASES) are producing data right now
+           and which are missing. Hidden when both available + missing
+           are empty (no signal data computed yet). -->
+      <div class="cockpit-signals-row" id="cockpit-signals-row" hidden>
+        <span class="cockpit-signals-label">Signals:</span>
+        <span class="cockpit-signals-pills" id="cockpit-signals-pills"></span>
+      </div>
+      <!-- Mode A plan widget (MA-2b 2026-05-14). Only visible when mode=A
+           and a plan exists. Read-only: shows current step + progress.
+           Auto-dispatch / advance arrives in MA-2c. -->
+      <div class="cockpit-mode-a-plan" id="cockpit-mode-a-plan" hidden>
+        <div class="cockpit-mode-a-plan-header">
+          <span class="cockpit-mode-a-plan-label">Autopilot 计划</span>
+          <span class="cockpit-mode-a-plan-phase-pill" id="cockpit-mode-a-phase-pill"></span>
+          <span class="cockpit-mode-a-plan-progress" id="cockpit-mode-a-plan-progress"></span>
+        </div>
+        <!-- Mode A v2 (CEO 2026-05-14 reframe): plan rationale + Scout
+             draft indicator + Start/Stop/Re-plan buttons. Hidden until
+             a plan exists. -->
+        <div class="cockpit-mode-a-rationale" id="cockpit-mode-a-rationale" hidden></div>
+        <ol class="cockpit-mode-a-plan-steps" id="cockpit-mode-a-plan-steps"></ol>
+        <div class="cockpit-mode-a-controls" id="cockpit-mode-a-controls" hidden>
+          <button type="button" id="cockpit-mode-a-start"  class="cockpit-mode-a-btn cockpit-mode-a-btn-primary" hidden>▶ 开始执行</button>
+          <button type="button" id="cockpit-mode-a-stop"   class="cockpit-mode-a-btn" hidden>⏸ 暂停</button>
+          <button type="button" id="cockpit-mode-a-replan" class="cockpit-mode-a-btn" hidden>↻ 重新规划</button>
+        </div>
+      </div>
+      <div class="cockpit-needs-list" id="cockpit-needs-list">
+        <div class="cockpit-needs-empty">运行平稳 · 无需介入</div>
+      </div>
+    </div>
+
+    <!-- M2 Todolist (A2.1) — sits directly below Mentor status. Agent self-
+         proposals + Mentor recommendations + user adds. Each row has a source
+         pill + label + [派给 ▾] (agent_proposal) or [Approve →] (mentor_todo /
+         user_todo) button → writes dispatch_requests via A2.2 IPC. -->
+    <div class="cockpit-todolist" id="cockpit-todolist">
+      <div class="cockpit-todolist-title">💡 TODOS</div>
+      <div id="cockpit-todolist-list">
+        <div class="cockpit-todolist-empty">还没有建议 — agent 干完一段或主动提议下一步时会出现在这里。也可以在下方写自己的备忘。</div>
+      </div>
+      <div class="cockpit-todo-add-row">
+        <input id="cockpit-todo-add-input" type="text" placeholder="Add a todo…" maxlength="200" />
+        <button id="cockpit-todo-add-send" type="button">＋ Add</button>
+      </div>
+      <div class="cockpit-todo-add-status" id="cockpit-todo-add-status"></div>
+    </div>
+
+    <!-- Mode B Continuous Iteration — lane chain status (slice 2+4, 2026-05-14).
+         Compact list of authorized lane chains for this project. Per
+         PRODUCT.md §1.3 #4a: lane stops at REVIEWED — user must explicitly
+         advance. Always visible (collapsed when empty) so user knows the
+         Mode B feature exists. -->
+    <div class="cockpit-lane" id="cockpit-lane">
+      <div class="cockpit-lane-header">
+        <div class="cockpit-section-title">🛤 LANES</div>
+        <button id="cockpit-lane-new-btn" type="button" title="Authorize a new lane chain (Continuous Iteration)">+ New lane</button>
+      </div>
+      <div class="cockpit-lane-list" id="cockpit-lane-list">
+        <div class="placeholder">no authorized lanes — click "+ New lane" to chain tasks</div>
+      </div>
+      <!-- Hidden creation form, revealed by the + New lane button -->
+      <div class="cockpit-lane-create" id="cockpit-lane-create" hidden>
+        <label for="cockpit-lane-textarea">Task IDs (one per line; ordered, run top-down):</label>
+        <textarea id="cockpit-lane-textarea" rows="4" placeholder="task_id_1&#10;task_id_2&#10;task_id_3"></textarea>
+        <div class="cockpit-lane-create-actions">
+          <button id="cockpit-lane-create-submit" type="button">Authorize lane</button>
+          <button id="cockpit-lane-create-cancel" type="button">Cancel</button>
+        </div>
+        <div class="cockpit-lane-create-status" id="cockpit-lane-create-status"></div>
+      </div>
+    </div>
+
+    <!-- M3 STEER (A4 reorder — was M2). Single-line radio to a session. -->
+    <div class="cockpit-steer" id="cockpit-steer">
+      <label class="cockpit-steer-label">STEER AGENT</label>
+      <div class="cockpit-steer-row">
+        <select id="cockpit-steer-target" class="cockpit-steer-target" title="目标 session"></select>
+        <input id="cockpit-steer-input" type="text" placeholder="一句话引导 agent…" />
+        <button id="cockpit-steer-send" type="button">Send</button>
+      </div>
+      <div class="cockpit-steer-status" id="cockpit-steer-status"></div>
+    </div>
+
+    <!-- Module 4: SESSIONS (panel-cockpit-redesign 2026-05-14 — A3-part2).
+         Replaces the old Activity Feed. Per CEO grill, "agent 工作脉络"
+         is session-centric: list every session attributed to this project
+         (working / blocked / idle / stale), then drill into one to see
+         its execution timeline (A1 phase, not yet built).
+
+         Activity Feed's project-level events stream is being relocated:
+         per-session events → L2 timeline; system events → Module 5 Needs You.
+         A2 phase will fold Mentor + Needs You into M2 (this module's
+         position will then become M4 per the 17 product constraints).
+
+         Until A2 lands, this module sits in the M3 slot (where Activity
+         was) and the legacy module order is M3=Sessions / M4=Safety /
+         M5=NeedsYou. Final reordering happens in A4. -->
+    <div class="cockpit-sessions" id="cockpit-sessions">
+      <div class="cockpit-section-title">Sessions</div>
+      <div class="cockpit-sessions-list" id="cockpit-sessions-list">
+        <div class="placeholder">no sessions yet — start an agent in this project</div>
+      </div>
+    </div>
+
+    <!-- Module 4: SAFETY / REWIND -->
+    <div class="cockpit-safety" id="cockpit-safety">
+      <div class="cockpit-section-title">⌛ Safety / Rewind</div>
+      <div class="cockpit-checkpoints-list" id="cockpit-checkpoints-list">
+        <div class="placeholder">no checkpoints yet</div>
+      </div>
+    </div>
+
+    <!-- "What is Cairn?" inline help overlay (Phase 7 onboarding) -->
+    <div class="cockpit-help-overlay" id="cockpit-help-overlay">
+      <button class="cockpit-help-close" id="cockpit-help-close" type="button">✕</button>
+      <h3>Cairn — 一句话</h3>
+      <p>
+        Cairn 是<strong>你的 AI 编程工人组合管理面</strong>。
+        agent（Claude Code / Cursor / Codex / Aider 等）是<em>真正写代码的引擎</em>；
+        Cairn 是仪表盘 + 方向盘 + 急刹车，让你能放心走开、回来看进度、必要时拉回方向。
+      </p>
+      <h3>5 个模块</h3>
+      <p>
+        <strong>① State Strip</strong>：项目跑得怎样、Whole 是啥、最近 24h 战况<br>
+        <strong>② Mentor</strong>：状态 + Mentor 建议 / Agent 自荐 / 你的备忘（每条可派给 session）<br>
+        <strong>③ Steer</strong>：选个 session 直接喊一句<br>
+        <strong>④ Sessions</strong>：每个 agent session 的工作脉络 (点进去看 timeline)<br>
+        <strong>⑤ Safety</strong>：一键回退到某个 checkpoint
+      </p>
+      <h3>键盘快捷键</h3>
+      <p>
+        <code>j</code> / <code>k</code> 上下浏览 activity；
+        <code>/</code> 聚焦 steer 输入；
+        <code>Enter</code> 发送；
+        <code>Esc</code> 回上一层（在 projects 列表时关闭面板）；
+        <code>?</code> 打开这页帮助
+      </p>
+      <h3>Mentor 边界</h3>
+      <p>
+        Cairn 内置 Mentor 是<em>引导员</em>，不是<em>决策者</em>。战略决策（"下一个 feature 是啥"）走外部 coding agent；Mentor 只做监督 + 引导 + 辅助提效。
+      </p>
+      <h3>🛤 Lanes — 连续迭代（"走开就行"）</h3>
+      <p>
+        在 Mentor 建议清单里勾选 N 个 agent 自荐项 → 点 "Authorize N as lane" → Cairn 把它们排成 lane，逐个跑。每个 task 跑到 WAITING_REVIEW，Cairn 自动停下来 + Mentor 给你一句通知 + 等你点 Advance。<strong>永远不替你 accept</strong>（PRODUCT.md §1.3 #4a 守住）。这就是"走开就行"——但你回来才是决策者。
+      </p>
+    </div>
+
+  </div>
+
+  <!-- L2 Session Timeline drill-down (panel-cockpit-redesign A1.2, 2026-05-14).
+       Opened by clicking a session row in M4 Sessions. Shows chronological
+       agent execution events + checkpoints as rewind anchors. Subagent
+       events are visually indented via parent_event_id. -->
+  <div id="view-timeline" hidden>
+    <div class="tl-header">
+      <button id="tl-back" type="button" class="tl-back">← back to cockpit</button>
+      <div class="tl-titlebar">
+        <span class="tl-title" id="tl-title">session timeline</span>
+        <span class="tl-meta" id="tl-meta"></span>
+      </div>
+    </div>
+    <div class="tl-list" id="tl-list">
+      <div class="placeholder">加载中…</div>
+    </div>
+  </div>
+
+  <!-- L1.5 Unassigned detail (drill-down from L1 Unassigned card) -->
+  <div id="view-unassigned" hidden>
+    <div class="ua-header">
+      <div id="ua-title">Unassigned</div>
+      <div id="ua-db-path" style="color:#666;font-size:0.85em;margin-top:2px;"></div>
+      <div id="ua-counts" class="ua-counts"></div>
+    </div>
+    <div class="sess-group-title">UNASSIGNED AGENTS</div>
+    <div id="ua-agents-list">
+      <div class="placeholder">loading…</div>
+    </div>
+  </div>
+
+  <!-- Modal for "Add to project…" picker -->
+  <div id="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-title" id="modal-title">Add to project…</div>
+      <div id="modal-body"></div>
+      <div class="modal-cancel"><a id="modal-cancel-btn">cancel</a></div>
+    </div>
+  </div>
+
+  <div id="footer">read-only · polling 1s · Cairn project control surface</div>
+</div>
+<script src="panel.js"></script>
+</body>
+</html>

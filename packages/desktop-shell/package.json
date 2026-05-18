@@ -15,7 +15,7 @@
   },
   "scripts": {
     "start": "electron .",
-    "postinstall": "npx prebuild-install --runtime electron --target 32.3.3 --arch x64 --platform win32 --module-dir node_modules/better-sqlite3 || true",
+    "rebuild:native": "npx prebuild-install --runtime electron --target 32.3.3 --arch x64 --platform win32 --module-dir node_modules/better-sqlite3",
     "dist:win": "electron-builder --win nsis",
     "dist:mac": "electron-builder --mac dmg",
     "dist:dir": "electron-builder --dir",
