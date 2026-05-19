@@ -107,42 +107,65 @@
               </div>
             </div>
 
-            <!-- Hero mock: Now tab — CSS-only, no PNG dependency -->
+            <!-- Hero 截图占位（4 方案共用同一张静态合成图） -->
             <div class="hero-shot" aria-hidden="true">
-              <div class="mockui mockui-hero" role="img" aria-label="Pace Now tab mock — PMP 项目透镜卡 + 观察卡">
-                <div class="mockui-header">
-                  <span class="mockui-brand">
-                    <span class="mockui-dot"></span>
-                    <span class="mockui-brand-name">pace</span>
-                    <span class="mockui-brand-sub">PMP project mentor</span>
-                  </span>
-                  <span class="mockui-gear" aria-hidden="true">⚙</span>
+              <div class="shot-frame">
+                <!-- 后景 1：git commit -->
+                <div class="shot-bg-commit">
+                  <span class="dot dot-green"></span>
+                  <span class="mono"
+                    >feat: streaming output + thinking animation</span
+                  >
+                  <span class="mono mono-muted">· 4ae4781</span>
                 </div>
-                <div class="mockui-meta">pace · main · 2 dirty · M2.7-highspeed</div>
-                <nav class="mockui-tabs" aria-hidden="true">
-                  <span class="mockui-tab is-active">Now <span class="mockui-tab-num">· 7</span></span>
-                  <span class="mockui-tab">Team</span>
-                  <span class="mockui-tab">Ask</span>
-                </nav>
 
-                <article class="mockui-card-pmp">
-                  <p class="mockui-kicker">PACE · PMP MENTOR</p>
-                  <h4 class="mockui-card-title">Map your work into a PMP project lens</h4>
-                  <p class="mockui-card-desc">Watches your git / cc / team and surfaces stage signals, next steps, and phrasing.</p>
-                  <div class="mockui-chips">
-                    <span class="mockui-chip">cc 8 轮</span>
-                    <span class="mockui-chip">3 commits</span>
-                    <span class="mockui-chip">RACI 2 人</span>
-                  </div>
-                </article>
+                <!-- 后景 2：cc terminal -->
+                <div class="shot-bg-cc">
+                  <span class="mono mono-muted"
+                    >~/.claude/projects/D--lll-pace/&lt;sid&gt;.jsonl</span
+                  >
+                  <br />
+                  <span class="mono mono-faint"
+                    >&gt; type=user  content=&quot;我现在在干啥&quot;</span
+                  ><br />
+                  <span class="mono mono-faint"
+                    >&gt; cwd=&quot;D:\\lll\\pace&quot;</span
+                  >
+                </div>
 
-                <article class="mockui-observe">
-                  <span class="mockui-observe-icon" aria-hidden="true">⏳</span>
-                  <div class="mockui-observe-body">
-                    <p class="mockui-observe-line">Working directly on main</p>
-                    <p class="mockui-observe-link">Want a suggestion →</p>
+                <!-- 前景：Pace panel -->
+                <div class="shot-panel">
+                  <div class="shot-panel-tabs">
+                    <span class="shot-tab is-active">现在</span>
+                    <span class="shot-tab">问问</span>
+                    <span class="shot-tab">团队</span>
+                    <span class="shot-tab">提交</span>
                   </div>
-                </article>
+
+                  <div class="shot-card">
+                    <div class="shot-card-head">
+                      <span class="shot-card-pin">✦</span>
+                      <span class="shot-card-title mono"
+                        >feat: streaming output + thinking animation</span
+                      >
+                    </div>
+                    <p class="shot-card-stage">
+                      <em>Planning · Scope Definition · 72%</em>
+                    </p>
+                    <p class="shot-card-body">
+                      先和后端 owner 对齐 API contract，再进 Executing 阶段——再写一周就是返工。
+                    </p>
+                    <div class="shot-card-chips">
+                      <span class="shot-chip">cc 8 轮</span>
+                      <span class="shot-chip">3 commits</span>
+                      <span class="shot-chip">RACI 2 人</span>
+                    </div>
+                  </div>
+
+                  <div class="shot-thinking">
+                    <span class="shot-thinking-label">思考 140 字 · 29s ▾</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -292,171 +315,82 @@
           <ol class="wow-grid">
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <div class="mockui mockui-wow" role="img" aria-label="Pace Now tab mock — commit digest 自动开口">
-                  <div class="mockui-header mockui-header-sm">
-                    <span class="mockui-brand">
-                      <span class="mockui-dot"></span>
-                      <span class="mockui-brand-name">pace</span>
-                    </span>
-                    <span class="mockui-gear" aria-hidden="true">⚙</span>
+                <div class="wow-shot-frame">
+                  <div class="shot-panel-tabs">
+                    <span class="shot-tab is-active">现在</span>
+                    <span class="shot-tab">问问</span>
+                    <span class="shot-tab">团队</span>
                   </div>
-                  <div class="mockui-meta">pace · main · 2 dirty</div>
-                  <nav class="mockui-tabs" aria-hidden="true">
-                    <span class="mockui-tab is-active">Now <span class="mockui-tab-num">· 7</span></span>
-                    <span class="mockui-tab">Team</span>
-                    <span class="mockui-tab">Ask</span>
-                  </nav>
-
-                  <p class="mockui-digest">最近 <strong>8 个 commit</strong> 多落在 <em>执行 × 整合</em> · 跨度 3 小时</p>
-
-                  <ul class="mockui-commits">
-                    <li class="mockui-commit-row">
-                      <span class="mockui-hash">ea2913c</span>
-                      <span class="mockui-when">45 分钟前</span>
-                      <span class="mockui-subj">ui(landing): tagline v2</span>
-                      <span class="mockui-pmp-tag">执行·范围</span>
-                    </li>
-                    <li class="mockui-commit-row">
-                      <span class="mockui-hash">c400295</span>
-                      <span class="mockui-when">1 小时前</span>
-                      <span class="mockui-subj">feat: landing 5 屏</span>
-                      <span class="mockui-pmp-tag">执行·范围</span>
-                    </li>
-                    <li class="mockui-commit-row">
-                      <span class="mockui-hash">d04ad27</span>
-                      <span class="mockui-when">1 小时前</span>
-                      <span class="mockui-subj">docs+seed: 519 归档</span>
-                      <span class="mockui-pmp-tag">执行·质量</span>
-                    </li>
-                  </ul>
-
-                  <article class="mockui-observe">
-                    <span class="mockui-observe-icon" aria-hidden="true">⏳</span>
-                    <div class="mockui-observe-body">
-                      <p class="mockui-observe-line">上次 commit 是 47 分钟前</p>
-                      <p class="mockui-observe-link">Want a suggestion →</p>
+                  <div class="shot-card shot-card-inline">
+                    <div class="shot-card-head">
+                      <span class="shot-card-pin">✦</span>
+                      <span class="shot-card-title mono"
+                        >feat: streaming output + thinking animation</span
+                      >
                     </div>
-                  </article>
+                    <p class="shot-card-stage">
+                      <em>Planning · Scope Definition · 72%</em>
+                    </p>
+                    <p class="shot-card-body">
+                      先和后端 owner 对齐 API contract。
+                    </p>
+                  </div>
                 </div>
               </div>
               <p class="wow-index">01</p>
               <h3 class="wow-title">不用问，feed 先开口</h3>
               <p class="wow-body">
-                你 push 的每个 commit，Pace 自动打 PMP 阶段标签。<strong>「在 main 上裸改」</strong>「<strong>29 个 commit 没 push</strong>」——观察卡自己跳出来。
+                你推的每个 commit，Pace 自动给出 PMP 阶段标签和下一步话术。<strong>不用问。</strong>
               </p>
             </li>
 
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <div class="mockui mockui-wow" role="img" aria-label="Pace Ask tab mock — context strip + 7 条建议追问">
-                  <div class="mockui-header mockui-header-sm">
-                    <span class="mockui-brand">
-                      <span class="mockui-dot"></span>
-                      <span class="mockui-brand-name">pace</span>
-                    </span>
-                    <span class="mockui-gear" aria-hidden="true">⚙</span>
+                <div class="wow-shot-frame">
+                  <div class="shot-thinking shot-thinking-wide">
+                    <span class="shot-thinking-label"
+                      >思考 140 字 · 29s ▾</span
+                    >
                   </div>
-                  <div class="mockui-meta">pace · main · 2 dirty</div>
-                  <nav class="mockui-tabs" aria-hidden="true">
-                    <span class="mockui-tab">Now <span class="mockui-tab-num">· 7</span></span>
-                    <span class="mockui-tab">Team</span>
-                    <span class="mockui-tab is-active">Ask</span>
-                  </nav>
-
-                  <p class="mockui-ctxstrip">
-                    <span class="mockui-ctx-label">What I see:</span>
-                    <strong>pace</strong> · main · <strong>5</strong> changes · ahead <strong>29</strong> · 3 teammates · chatted <strong>8</strong> times
-                  </p>
-
-                  <p class="mockui-section-kicker">STUCK? TRY ONE OF THESE</p>
-
-                  <ul class="mockui-asklist">
-                    <li><span class="mockui-arrow">→</span> What PMP stage is my current work in?<span class="mockui-asktag">PMP STAGE</span></li>
-                    <li><span class="mockui-arrow">→</span> Editing main directly · how risky?<span class="mockui-asktag">RISK</span></li>
-                    <li><span class="mockui-arrow">→</span> 29 commits unpushed · does it matter?<span class="mockui-asktag">COLLAB</span></li>
-                    <li><span class="mockui-arrow">→</span> That last commit · reasonable move?<span class="mockui-asktag">RETRO</span></li>
-                    <li><span class="mockui-arrow">→</span> How to align with 晓婷 (PM)?<span class="mockui-asktag">COMMS</span></li>
-                  </ul>
-
-                  <div class="mockui-askinput">
-                    <span class="mockui-askinput-ph">Ask anything…</span>
-                    <span class="mockui-askinput-btn">SEND</span>
+                  <div class="shot-bubble">
+                    <p class="shot-bubble-text">
+                      你早上推的 3 个 commit 在 Planning 阶段——先和王后端把 API 对一遍。
+                    </p>
                   </div>
                 </div>
               </div>
               <p class="wow-index">02</p>
-              <h3 class="wow-title">卡住时，7 条建议先递给你</h3>
+              <h3 class="wow-title">思考像 DeepSeek，正文一来就让位</h3>
               <p class="wow-body">
-                输入框上面那行：「<strong>pace · main · 5 changes · ahead 29 · 3 teammates</strong>」——Pace 看到的你。下面 7 条建议都是贴这个状态拼出来的，<strong>不用现想开口的句子。</strong>
+                思考字流一上来，框就缩。正文是主角，思考是配菜——一行 header 留给你回看。
               </p>
             </li>
 
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <div class="mockui mockui-wow" role="img" aria-label="Pace Team tab mock — 3 同事 RACI 卡">
-                  <div class="mockui-header mockui-header-sm">
-                    <span class="mockui-brand">
-                      <span class="mockui-dot"></span>
-                      <span class="mockui-brand-name">pace</span>
+                <div class="wow-shot-frame">
+                  <div class="shot-panel-tabs">
+                    <span class="shot-tab">现在</span>
+                    <span class="shot-tab is-active">问问</span>
+                    <span class="shot-tab">团队</span>
+                  </div>
+                  <div class="shot-banner">
+                    <span class="shot-banner-text">
+                      以 <em>王后端</em> 的视角和你对话
                     </span>
-                    <span class="mockui-gear" aria-hidden="true">⚙</span>
+                    <span class="shot-banner-exit">[退出 ta 的视角]</span>
                   </div>
-                  <div class="mockui-meta">pace · main · 2 dirty</div>
-                  <nav class="mockui-tabs" aria-hidden="true">
-                    <span class="mockui-tab">Now <span class="mockui-tab-num">· 7</span></span>
-                    <span class="mockui-tab is-active">Team</span>
-                    <span class="mockui-tab">Ask</span>
-                  </nav>
-
-                  <div class="mockui-team-head">
-                    <span class="mockui-team-count">3 MEMBER(S)</span>
-                    <span class="mockui-add-btn">+ Add member</span>
+                  <div class="shot-bubble shot-bubble-them">
+                    <p class="shot-bubble-text">
+                      这个 API 的 error code 你定了几种？前端拿 401 跟 403 还分得清吗？
+                    </p>
                   </div>
-
-                  <article class="mockui-member">
-                    <span class="mockui-avatar">晓婷</span>
-                    <div class="mockui-member-body">
-                      <p class="mockui-member-line1">
-                        <strong>晓婷</strong>
-                        <span class="mockui-role">PM</span>
-                        <span class="mockui-raci mockui-raci-a">A</span>
-                      </p>
-                      <p class="mockui-agent-chip">xiaoting-agent</p>
-                    </div>
-                    <span class="mockui-talk-btn">💬 Talk</span>
-                  </article>
-
-                  <article class="mockui-member">
-                    <span class="mockui-avatar">To</span>
-                    <div class="mockui-member-body">
-                      <p class="mockui-member-line1">
-                        <strong>Tom</strong>
-                        <span class="mockui-role">Eng</span>
-                        <span class="mockui-raci mockui-raci-r">R</span>
-                      </p>
-                      <p class="mockui-agent-chip">tom-cc-session-3a2f</p>
-                    </div>
-                    <span class="mockui-talk-btn">💬 Talk</span>
-                  </article>
-
-                  <article class="mockui-member">
-                    <span class="mockui-avatar">阿珍</span>
-                    <div class="mockui-member-body">
-                      <p class="mockui-member-line1">
-                        <strong>阿珍</strong>
-                        <span class="mockui-role">Designer</span>
-                        <span class="mockui-raci mockui-raci-c">C</span>
-                      </p>
-                      <p class="mockui-agent-chip">azhen-agent</p>
-                    </div>
-                    <span class="mockui-talk-btn">💬 Talk</span>
-                  </article>
                 </div>
               </div>
               <p class="wow-index">03</p>
               <h3 class="wow-title">切到 ta 的视角，把话先说一遍</h3>
               <p class="wow-body">
-                团队里每个人都有 <strong>RACI 标签</strong>和 <strong>agent 代号</strong>。点「Talk to them」，mentor 切到 ta 的口气和你对话——见面前先把 ta 的反应预演一遍。
+                见面前切到 ta 的视角，让 mentor 用 ta 的口气问你一遍——上桌前先排练完。
               </p>
             </li>
           </ol>
