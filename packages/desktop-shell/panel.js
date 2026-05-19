@@ -58,6 +58,8 @@ const clearAsMemberBtn = document.getElementById('clear-as-member');
 
 // active member persona for Ask tab (null = normal mentor)
 let activeAsMember = null;
+// multi-turn conversation history for the Ask tab (current session)
+let askConversation = [];
 
 // Team
 const teamListEl       = document.getElementById('team-list');
@@ -826,6 +828,28 @@ async function streamMentorInto(parent, text, opts) {
       // Auto-scroll thinking body
       ui.thinkBody.scrollTop = ui.thinkBody.scrollHeight;
       if (ctx) ctx.scrollTop = ctx.scrollHeight;
+    } else if (chunk.type === 'tool_call') {
+      if (ui.thinking.hidden) ui.thinking.hidden = false;
+      const line = document.createElement('div');
+      line.className = 'tool-event tool-event-call';
+      const icon = document.createElement('span'); icon.textContent = '🔧 '; line.appendChild(icon);
+      const name = document.createElement('strong'); name.textContent = chunk.name; line.appendChild(name);
+      const args = document.createElement('span');
+      try {
+        const argsStr = JSON.stringify(chunk.args || {});
+        args.textContent = argsStr.length > 80 ? ' ' + argsStr.slice(0, 80) + '…' : ' ' + argsStr;
+      } catch (_e) { args.textContent = ''; }
+      args.style.color = 'var(--text-muted)';
+      line.appendChild(args);
+      ui.thinkBody.appendChild(line);
+      ui.thinkBody.scrollTop = ui.thinkBody.scrollHeight;
+    } else if (chunk.type === 'tool_result') {
+      const line = document.createElement('div');
+      line.className = 'tool-event tool-event-result' + (chunk.ok === false ? ' err' : '');
+      line.textContent = (chunk.ok === false ? '  ✗ ' : '  → ') + (chunk.preview || '');
+      ui.thinkBody.appendChild(line);
+      ui.thinkBody.scrollTop = ui.thinkBody.scrollHeight;
+      if (ctx) ctx.scrollTop = ctx.scrollHeight;
     } else if (chunk.type === 'answer') {
       if (!firstAnswerSeen) {
         firstAnswerSeen = true;
@@ -894,14 +918,24 @@ async function send() {
   inputEl.value = '';
   appendUserMsg(text);
   if (footerStatus) footerStatus.textContent = '思考中…';
-  const opts = activeAsMember ? { as_member_id: activeAsMember.id } : {};
+  // Build history payload from accumulated askConversation
+  const historyForApi = askConversation.slice(-12);
+  const opts = { history: historyForApi };
+  if (activeAsMember) opts.as_member_id = activeAsMember.id;
   try {
     const r = await streamMentorInto(askHistoryEl, text, opts);
+    if (r && r.markdown) {
+      // Append both turns to history for future turns
+      askConversation.push({ role: 'user', content: text });
+      askConversation.push({ role: 'assistant', content: r.markdown });
+      // Cap at last 24 entries (12 turns)
+      if (askConversation.length > 24) askConversation = askConversation.slice(-24);
+    }
     if (r && r.debug && r.debug.elapsed_ms && footerLastLatency) {
       footerLastLatency.textContent = (r.debug.elapsed_ms / 1000).toFixed(1) + 's';
     }
     if (footerStatus) footerStatus.textContent = '就绪';
-    window.pace.log('panel', 'mentor_reply', { input_length: text.length, stage: r && r.debug && r.debug.stage });
+    window.pace.log('panel', 'mentor_reply', { input_length: text.length, stage: r && r.debug && r.debug.stage, history_turns: askConversation.length / 2 });
   } catch (err) {
     if (footerStatus) footerStatus.textContent = '出错';
     window.pace.log('panel', 'mentor_reply_error', { error: String(err) }, 'error');
@@ -1293,6 +1327,8 @@ function startMemberPersona(member) {
   activeAsMember = member;
   asMemberName.textContent = `${member.name}${member.role ? '（' + member.role + '）' : ''}`;
   asMemberBanner.hidden = false;
+  // Persona switch starts a fresh conversation
+  askConversation = [];
   switchTab('ask');
   inputEl.focus();
   inputEl.placeholder = `用问 ${member.name} 的语气提问…`;
@@ -1302,6 +1338,8 @@ function clearMemberPersona() {
   activeAsMember = null;
   asMemberBanner.hidden = true;
   inputEl.placeholder = '问点什么…';
+  // Also clear conversation history — switching persona = new conversation
+  askConversation = [];
 }
 
 clearAsMemberBtn.addEventListener('click', clearMemberPersona);

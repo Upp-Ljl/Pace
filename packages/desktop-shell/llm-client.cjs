@@ -334,11 +334,80 @@ async function chatStream(payload, opts) {
   }
 }
 
+/**
+ * Tools-aware non-streaming variant. Sends `tools` and returns the
+ * full `choices[0].message` object so the caller can inspect
+ * `.content` and `.tool_calls`.
+ *
+ * Result shape:
+ *   { enabled: false, ok: false, error_code }
+ *   { enabled: true,  ok: false, model, error_code }
+ *   { enabled: true,  ok: true,  model, message, usage }
+ *
+ * Where `message` = { role, content, tool_calls? }
+ */
+async function chatJsonTools(payload, opts) {
+  const o = opts || {};
+  const provider = o.provider || loadProvider({ keysFile: o.keysFile });
+  if (!provider.enabled) {
+    return { enabled: false, ok: false, error_code: provider.reason || 'disabled' };
+  }
+  const fetchImpl = o.fetchImpl || (typeof fetch === 'function' ? fetch : null);
+  if (!fetchImpl) {
+    return { enabled: true, ok: false, model: provider.model, error_code: 'no_fetch' };
+  }
+  const timeoutMs = Number.isFinite(o.timeoutMs) ? o.timeoutMs : 60_000;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+
+  let url = provider.baseUrl;
+  if (!/\/chat\/completions(\?|$)/.test(url)) {
+    url = url.replace(/\/+$/, '') + '/chat/completions';
+  }
+  const body = {
+    model: provider.model,
+    messages: payload.messages,
+    temperature: payload.temperature != null ? payload.temperature : 0.2,
+  };
+  if (Number.isFinite(payload.max_tokens)) body.max_tokens = payload.max_tokens;
+  if (Array.isArray(payload.tools) && payload.tools.length) body.tools = payload.tools;
+  if (payload.tool_choice) body.tool_choice = payload.tool_choice;
+
+  try {
+    const resp = await fetchImpl(url, {
+      method: 'POST',
+      signal: ac.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + provider._apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      return { enabled: true, ok: false, model: provider.model, error_code: 'http_' + resp.status };
+    }
+    const json = await resp.json();
+    const message = json && json.choices && json.choices[0] && json.choices[0].message;
+    if (!message) {
+      return { enabled: true, ok: false, model: provider.model, error_code: 'no_message' };
+    }
+    return { enabled: true, ok: true, model: provider.model, message, usage: json.usage || null };
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      return { enabled: true, ok: false, model: provider.model, error_code: 'timeout' };
+    }
+    return { enabled: true, ok: false, model: provider.model, error_code: 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 module.exports = {
   parseEnvFile,
   loadProvider,
   describeProvider,
   chatJson,
+  chatJsonTools,
   chatStream,
   DEFAULT_TIMEOUT_MS,
 };

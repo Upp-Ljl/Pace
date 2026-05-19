@@ -24,6 +24,7 @@ const ccBridge = require('./cc-bridge.cjs');
 const config = require('./config.cjs');
 const llmClient = require('./llm-client.cjs');
 const db = require('./db.cjs');
+const mentorTools = require('./mentor-tools.cjs');
 
 const PMP_SYSTEM_PROMPT = `你是 Pace，一位 PMP-style mentor，帮助职场人在使用 Claude Code 时把控项目节奏。
 
@@ -472,8 +473,260 @@ async function runMentorTurnStream(userInput, opts, onChunk) {
   return { turn_id: turnId, markdown: finalAnswer, debug };
 }
 
+/**
+ * Agent-mode streaming: multi-turn history + read-only tool calls.
+ *
+ * onChunk events (extends runMentorTurnStream):
+ *   {type:'thinking', text}
+ *   {type:'answer',   text}
+ *   {type:'tool_call', name, args}
+ *   {type:'tool_result', name, ok, preview}
+ *   {type:'done', final, debug}
+ *   {type:'error', code, markdown, debug}
+ */
+async function runMentorAgentStream(userText, opts, onChunk) {
+  const safeEmit = (chunk) => { try { onChunk && onChunk(chunk); } catch (_e) {} };
+  const o = opts || {};
+  const cwd = o.cwd || process.cwd();
+  const turnId = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+
+  const provider = config.getMinimaxProvider();
+  if (!provider.enabled) {
+    const md = errorMarkdown(provider.reason);
+    safeEmit({ type: 'error', code: provider.reason, markdown: md });
+    return { turn_id: turnId, markdown: md, debug: { stage: 'no_provider', reason: provider.reason } };
+  }
+
+  const ctx = ccBridge.collect({ cwd, includeTranscript: true, transcriptN: 8 });
+  let team = [];
+  let asMember = null;
+  try {
+    const projectId = (ctx.git && ctx.git.git_root) || cwd;
+    team = db.listTeamMembers(projectId);
+    if (o.as_member_id) asMember = team.find((m) => m.id === o.as_member_id) || null;
+  } catch (_e) { /* ignore */ }
+
+  const systemPrompt = asMember ? buildMemberPersonaPrompt(asMember) : PMP_SYSTEM_PROMPT;
+  const userBlock = buildUserBlock(userText, ctx, team, asMember);
+
+  // Conversation history from caller (previous user/assistant pairs)
+  const history = Array.isArray(o.history)
+    ? o.history.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').slice(-12)
+    : [];
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history,
+    { role: 'user', content: userBlock },
+  ];
+
+  const tools = mentorTools.toolSpecs();
+  const t0 = Date.now();
+  const usedTools = [];
+  let usedAnyTool = false;
+
+  // ---- Tool-call loop (non-streaming) ----
+  const MAX_TOOL_ROUNDS = 4;
+  let lastNonToolMsg = null;
+  for (let iter = 0; iter < MAX_TOOL_ROUNDS; iter++) {
+    const resp = await llmClient.chatJsonTools(
+      { messages, tools, temperature: 0.2, max_tokens: 2048 },
+      { provider, timeoutMs: 60_000 }
+    );
+    if (!resp.ok) {
+      const md = errorMarkdown(resp.error_code, resp.model);
+      const debug = { stage: 'llm_error', error_code: resp.error_code, model: resp.model, elapsed_ms: Date.now() - t0 };
+      safeEmit({ type: 'error', code: resp.error_code, markdown: md, debug });
+      return { turn_id: turnId, markdown: md, debug };
+    }
+    const msg = resp.message || {};
+    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      usedAnyTool = true;
+      messages.push({
+        role: 'assistant',
+        content: msg.content || '',
+        tool_calls: msg.tool_calls,
+      });
+      for (const tc of msg.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_e) {}
+        safeEmit({ type: 'tool_call', name: tc.function.name, args });
+        const result = mentorTools.executeTool(tc.function.name, args, ctx);
+        usedTools.push({ name: tc.function.name, ok: result && result.ok !== false });
+        safeEmit({
+          type: 'tool_result',
+          name: tc.function.name,
+          ok: result && result.ok !== false,
+          preview: previewToolResult(result),
+        });
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(result).slice(0, 12_000),
+        });
+      }
+      continue;  // next round
+    }
+    // No more tool calls
+    lastNonToolMsg = msg;
+    break;
+  }
+
+  // ---- Final answer ----
+  // If we used tools, do a streaming call so user gets per-token UX after the tools settle.
+  // If we never used tools, just emit lastNonToolMsg.content directly to save cost.
+  if (!usedAnyTool && lastNonToolMsg) {
+    const stripped = stripThinkBlocks(lastNonToolMsg.content || '');
+    const elapsed = Date.now() - t0;
+    const debug = {
+      stage: 'ok',
+      model: provider.model,
+      elapsed_ms: elapsed,
+      ctx_meta: ctx._meta,
+      git_available: !!(ctx.git && ctx.git.available),
+      cc_session_found: !!ctx.cc_session,
+      transcript_count: (ctx.transcript || []).length,
+      team_size: team.length,
+      api_key_source:  provider._source.api_key,
+      base_url_source: provider._source.base_url,
+      model_source:    provider._source.model,
+      used_tools:      [],
+      streamed:        false,
+      agent_mode:      true,
+      as_member_id:    asMember ? asMember.id : null,
+    };
+    safeEmit({ type: 'answer', text: stripped });
+    persistTurn({ turnId, createdAt, cwd, ctx, userText, mentor_reply: stripped, debug, elapsed });
+    safeEmit({ type: 'done', final: stripped, debug });
+    return { turn_id: turnId, markdown: stripped, debug };
+  }
+
+  // Final streaming call with all accumulated messages (post tool rounds)
+  let state = 'pre_think';
+  let pending = '';
+  let thinkingAccum = '';
+  let answerAccum = '';
+  const TAG_OPEN  = '<think>';
+  const TAG_CLOSE = '</think>';
+  const MAX_PARTIAL_TAG = Math.max(TAG_OPEN.length, TAG_CLOSE.length);
+  function consumePending() {
+    while (pending.length) {
+      if (state === 'pre_think') {
+        const idx = pending.indexOf(TAG_OPEN);
+        if (idx >= 0) { pending = pending.slice(idx + TAG_OPEN.length); state = 'in_think'; continue; }
+        if (pending.length > 256) { state = 'answer'; continue; }
+        return;
+      }
+      if (state === 'in_think') {
+        const idx = pending.indexOf(TAG_CLOSE);
+        if (idx >= 0) {
+          const piece = pending.slice(0, idx);
+          if (piece) { thinkingAccum += piece; safeEmit({ type:'thinking', text: piece }); }
+          pending = pending.slice(idx + TAG_CLOSE.length);
+          state = 'answer';
+          continue;
+        }
+        if (pending.length > MAX_PARTIAL_TAG) {
+          const safe = pending.slice(0, pending.length - (MAX_PARTIAL_TAG - 1));
+          thinkingAccum += safe; safeEmit({ type:'thinking', text: safe });
+          pending = pending.slice(safe.length);
+        }
+        return;
+      }
+      if (state === 'answer') {
+        answerAccum += pending;
+        safeEmit({ type:'answer', text: pending });
+        pending = '';
+        return;
+      }
+    }
+  }
+
+  const resp2 = await llmClient.chatStream(
+    { messages, temperature: 0.3, max_tokens: 4096 },
+    {
+      provider,
+      timeoutMs: 120_000,
+      onChunk: ({ type, text }) => {
+        if (type !== 'delta') return;
+        pending += text;
+        consumePending();
+      },
+    }
+  );
+
+  if (pending.length) {
+    if (state === 'in_think') { thinkingAccum += pending; safeEmit({ type:'thinking', text: pending }); }
+    else { answerAccum += pending; safeEmit({ type:'answer', text: pending }); }
+    pending = '';
+  }
+
+  const elapsed = Date.now() - t0;
+  if (!resp2.ok) {
+    const md = errorMarkdown(resp2.error_code, resp2.model);
+    const debug = { stage: 'llm_error_after_tools', error_code: resp2.error_code, model: resp2.model, elapsed_ms: elapsed, used_tools: usedTools };
+    safeEmit({ type:'error', code: resp2.error_code, markdown: md, debug });
+    return { turn_id: turnId, markdown: md, debug };
+  }
+
+  const finalAnswer = answerAccum.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const debug = {
+    stage: 'ok',
+    model: resp2.model,
+    elapsed_ms: elapsed,
+    ctx_meta: ctx._meta,
+    git_available: !!(ctx.git && ctx.git.available),
+    cc_session_found: !!ctx.cc_session,
+    transcript_count: (ctx.transcript || []).length,
+    team_size: team.length,
+    api_key_source:  provider._source.api_key,
+    base_url_source: provider._source.base_url,
+    model_source:    provider._source.model,
+    used_tools:      usedTools,
+    streamed:        true,
+    agent_mode:      true,
+    as_member_id:    asMember ? asMember.id : null,
+    thinking_chars:  thinkingAccum.length,
+    answer_chars:    finalAnswer.length,
+  };
+
+  persistTurn({ turnId, createdAt, cwd, ctx, userText, mentor_reply: finalAnswer, debug, elapsed });
+  safeEmit({ type: 'done', final: finalAnswer, debug });
+  return { turn_id: turnId, markdown: finalAnswer, debug };
+}
+
+function previewToolResult(result) {
+  if (!result) return '(空)';
+  if (result.error) return '✗ ' + String(result.error).slice(0, 80);
+  // Take a compact preview
+  if (result.commits) return `${result.commits.length} 个 commit`;
+  if (result.entries) return `${result.entries.length} 项`;
+  if (result.diff)    return `diff ${result.diff.length} 字`;
+  if (result.content) return `${result.lines_returned || '?'} 行内容`;
+  if (result.turns)   return `${result.turns.length} 轮 cc 对话`;
+  return 'ok';
+}
+
+function persistTurn({ turnId, createdAt, cwd, ctx, userText, mentor_reply, debug, elapsed }) {
+  try {
+    db.logMentorTurn({
+      turn_id: turnId,
+      created_at: createdAt,
+      project_id: (ctx.git && ctx.git.git_root) || null,
+      cwd,
+      user_input: userText,
+      mentor_reply,
+      debug,
+      llm_model: debug.model,
+      latency_ms: elapsed,
+    });
+  } catch (_e) { /* swallow */ }
+}
+
 module.exports = {
   runMentorTurn,
   runMentorTurnStream,
+  runMentorAgentStream,
   PMP_SYSTEM_PROMPT,
 };

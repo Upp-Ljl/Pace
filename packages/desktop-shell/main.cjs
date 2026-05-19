@@ -170,8 +170,9 @@ ipcMain.handle('pace:mentor-ask-stream', async (event, input) => {
   }
   const cwd = (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
   const asMemberId = (input && Number.isInteger(input.as_member_id)) ? input.as_member_id : null;
+  const history = (input && Array.isArray(input.history)) ? input.history : [];
   try {
-    return await mentorPipeline.runMentorTurnStream(text, { cwd, as_member_id: asMemberId }, (chunk) => {
+    return await mentorPipeline.runMentorAgentStream(text, { cwd, as_member_id: asMemberId, history }, (chunk) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('pace:stream-chunk', { stream_id: streamId, chunk });
       }
