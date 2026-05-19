@@ -988,52 +988,160 @@ function maybeExtractAndRenderTodos(rootEl, finalText) {
   items.forEach((li) => {
     const codeEl = li.querySelector('code');
     const cmd = codeEl ? codeEl.textContent : li.textContent.trim();
-    // Pull description as text after the code element
     let description = '';
     if (codeEl) {
       const after = li.innerHTML.split(codeEl.outerHTML)[1] || '';
       description = after.replace(/<[^>]+>/g, '').replace(/^[\s—–—–\-:·]+/, '').trim();
-    } else {
-      description = '';
     }
-
-    const chip = document.createElement('div');
-    chip.className = 'todo-chip';
-
-    const main = document.createElement('div');
-    main.className = 'todo-main';
-
-    const cmdEl = document.createElement('code');
-    cmdEl.className = 'todo-cmd';
-    cmdEl.textContent = cmd;
-    main.appendChild(cmdEl);
-
-    if (description) {
-      const desc = document.createElement('div');
-      desc.className = 'todo-desc';
-      desc.textContent = description;
-      main.appendChild(desc);
-    }
-    chip.appendChild(main);
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'todo-copy';
-    copyBtn.textContent = t('todo.copy');
-    copyBtn.title = t('todo.copy.title');
-    copyBtn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(cmd);
-        copyBtn.textContent = t('todo.copied');
-        setTimeout(() => { copyBtn.textContent = t('todo.copy'); }, 1500);
-      } catch (_e) { copyBtn.textContent = '✗'; }
-    });
-    chip.appendChild(copyBtn);
-
-    wrap.appendChild(chip);
+    wrap.appendChild(buildTodoChip(cmd, description));
   });
 
   next.parentNode.replaceChild(wrap, next);
   target.classList.add('todo-heading');
+}
+
+function buildTodoChip(cmd, description) {
+  const chip = document.createElement('div');
+  chip.className = 'todo-chip';
+
+  const main = document.createElement('div');
+  main.className = 'todo-main';
+
+  const cmdEl = document.createElement('code');
+  cmdEl.className = 'todo-cmd';
+  cmdEl.textContent = cmd;
+  main.appendChild(cmdEl);
+
+  if (description) {
+    const desc = document.createElement('div');
+    desc.className = 'todo-desc';
+    desc.textContent = description;
+    main.appendChild(desc);
+  }
+  chip.appendChild(main);
+
+  const actions = document.createElement('div');
+  actions.className = 'todo-actions';
+
+  const runBtn = document.createElement('button');
+  runBtn.className = 'todo-run';
+  runBtn.textContent = '…';
+  runBtn.disabled = true;
+  actions.appendChild(runBtn);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'todo-copy';
+  copyBtn.textContent = t('todo.copy');
+  copyBtn.title = t('todo.copy.title');
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(cmd);
+      copyBtn.textContent = t('todo.copied');
+      setTimeout(() => { copyBtn.textContent = t('todo.copy'); }, 1500);
+    } catch (_e) { copyBtn.textContent = '✗'; }
+  });
+  actions.appendChild(copyBtn);
+
+  chip.appendChild(actions);
+
+  // Classify async, then wire Run button accordingly
+  window.pace.classifyCommand(cmd).then((cls) => {
+    const c = (cls && cls.class) || 'unknown';
+    chip.classList.add('cls-' + c);
+    if (c === 'safe') {
+      runBtn.textContent = t('todo.run.safe');
+      runBtn.disabled = false;
+      runBtn.addEventListener('click', () => runTodo(chip, cmd, runBtn, false));
+    } else if (c === 'caution') {
+      runBtn.textContent = t('todo.run.caution');
+      runBtn.disabled = false;
+      runBtn.addEventListener('click', () => runTodo(chip, cmd, runBtn, true));
+    } else if (c === 'deny') {
+      runBtn.textContent = t('todo.run.deny');
+      runBtn.disabled = true;
+      runBtn.title = t('todo.deny.reason');
+    } else {
+      runBtn.textContent = t('todo.run.unknown');
+      runBtn.disabled = true;
+      runBtn.title = t('todo.unknown.reason');
+    }
+  }).catch(() => {
+    runBtn.textContent = t('todo.run.unknown');
+    runBtn.disabled = true;
+  });
+
+  return chip;
+}
+
+function runTodo(chip, cmd, runBtn, needsConfirm) {
+  if (needsConfirm && !chip.dataset.confirmed) {
+    // Show inline confirm row
+    if (chip.querySelector('.todo-confirm')) return;
+    const row = document.createElement('div');
+    row.className = 'todo-confirm';
+    const lbl = document.createElement('span');
+    lbl.textContent = t('todo.confirm');
+    row.appendChild(lbl);
+    const yes = document.createElement('button');
+    yes.className = 'todo-confirm-yes';
+    yes.textContent = t('todo.confirm.yes');
+    yes.addEventListener('click', () => {
+      chip.dataset.confirmed = '1';
+      row.remove();
+      runTodo(chip, cmd, runBtn, false);
+    });
+    const no = document.createElement('button');
+    no.className = 'todo-confirm-no';
+    no.textContent = t('todo.confirm.no');
+    no.addEventListener('click', () => row.remove());
+    row.appendChild(yes);
+    row.appendChild(no);
+    chip.appendChild(row);
+    return;
+  }
+
+  // Begin execution
+  runBtn.disabled = true;
+  const prev = runBtn.textContent;
+  runBtn.textContent = t('todo.running');
+  // Output panel
+  let outEl = chip.querySelector('.todo-output');
+  if (outEl) outEl.remove();
+  outEl = document.createElement('pre');
+  outEl.className = 'todo-output';
+  chip.appendChild(outEl);
+
+  const start = Date.now();
+  window.pace.execCommand({ cmd }, (chunk) => {
+    if (chunk.type === 'stdout' || chunk.type === 'stderr') {
+      const span = document.createElement('span');
+      span.className = 'out-' + chunk.type;
+      span.textContent = chunk.text;
+      outEl.appendChild(span);
+      // auto-scroll
+      outEl.scrollTop = outEl.scrollHeight;
+    } else if (chunk.type === 'exit') {
+      const sec = ((Date.now() - start) / 1000).toFixed(1);
+      const tail = document.createElement('div');
+      const code = chunk.code;
+      tail.className = 'out-exit ' + (code === 0 ? 'ok' : 'err');
+      tail.textContent = (code === 0 ? t('todo.exit.ok', { code, sec }) : t('todo.exit.err', { code, sec }));
+      outEl.appendChild(tail);
+      outEl.scrollTop = outEl.scrollHeight;
+      runBtn.disabled = false;
+      runBtn.textContent = prev;
+    } else if (chunk.type === 'error') {
+      const tail = document.createElement('div');
+      tail.className = 'out-exit err';
+      tail.textContent = '✗ ' + chunk.message;
+      outEl.appendChild(tail);
+      runBtn.disabled = false;
+      runBtn.textContent = prev;
+    }
+  }).catch(() => {
+    runBtn.disabled = false;
+    runBtn.textContent = prev;
+  });
 }
 
 sendBtn.addEventListener('click', send);

@@ -12,6 +12,21 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const api = {
   getStrings:       (lang)   => ipcRenderer.invoke('pace:strings-get', lang || null),
+  classifyCommand:  (cmd)    => ipcRenderer.invoke('pace:cmd-classify', cmd || ''),
+  execCommand:      (input, onChunk) => {
+    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const handler = (_event, payload) => {
+      if (payload && payload.run_id === runId) {
+        try { onChunk && onChunk(payload.chunk); } catch (_e) {}
+        if (payload.chunk && (payload.chunk.type === 'exit' || payload.chunk.type === 'error')) {
+          ipcRenderer.removeListener('pace:cmd-chunk', handler);
+        }
+      }
+    };
+    ipcRenderer.on('pace:cmd-chunk', handler);
+    return ipcRenderer.invoke('pace:cmd-exec', { ...(input || {}), run_id: runId })
+      .finally(() => ipcRenderer.removeListener('pace:cmd-chunk', handler));
+  },
   askMentor:        (input)  => ipcRenderer.invoke('pace:mentor-ask', input || {}),
   /**
    * Stream a mentor turn. onChunk receives:

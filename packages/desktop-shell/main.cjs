@@ -30,6 +30,7 @@ const ccBridge = require('./cc-bridge.cjs');
 const { buildTrayPng } = require('./tray-icon.cjs');
 const { GitWatcher } = require('./git-watcher.cjs');
 const i18n = require('./i18n.cjs');
+const cmdExec = require('./mentor-cmd-exec.cjs');
 
 const PANEL_WIDTHS = { slim: 420, regular: 460, wide: 520 };
 function resolveWinWidth() {
@@ -186,6 +187,32 @@ ipcMain.handle('pace:mentor-ask-stream', async (event, input) => {
 });
 
 // --- IPC: settings ---
+
+ipcMain.handle('pace:cmd-classify', async (_e, cmd) => {
+  return cmdExec.classifyCommand(cmd || '');
+});
+
+ipcMain.handle('pace:cmd-exec', async (event, input) => {
+  const cmd = (input && typeof input.cmd === 'string') ? input.cmd : '';
+  const runId = (input && input.run_id) || `run-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  const cls = cmdExec.classifyCommand(cmd);
+  if (cls.class === 'deny' || cls.class === 'invalid' || cls.class === 'unknown') {
+    event.sender.send('pace:cmd-chunk', { run_id: runId, chunk: { type: 'error', message: 'classify_blocked: ' + cls.class } });
+    return { ok: false, code: -1, class: cls.class };
+  }
+  // Default cwd: current project root via ccBridge
+  let cwd = (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
+  try {
+    const ctx = ccBridge.collect({ cwd, includeTranscript: false });
+    if (ctx.git && ctx.git.git_root) cwd = ctx.git.git_root;
+  } catch (_e) { /* fallback to cwd */ }
+  const result = await cmdExec.execCommandStream(cmd, { cwd, timeoutMs: 120_000 }, (chunk) => {
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('pace:cmd-chunk', { run_id: runId, chunk });
+    }
+  });
+  return Object.assign({ class: cls.class, run_id: runId }, result);
+});
 
 ipcMain.handle('pace:strings-get', async (_e, lang) => {
   const l = (lang === 'en' || lang === 'zh-CN') ? lang : (config.getSettings().language || 'zh-CN');
