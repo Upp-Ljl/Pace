@@ -413,13 +413,25 @@ async function runMentorTurn(userInput, opts) {
 
 function stripThinkBlocks(text) {
   if (!text || typeof text !== 'string') return '';
-  // Greedy strip of <think>...</think> blocks (case-insensitive).
-  // Also strip lone <think> at end (unterminated reasoning if model
-  // ran out of tokens) so user sees something coherent rather than
-  // mid-thought.
+  // Strip model-internal protocol blocks the user shouldn't see:
+  //   <think>...</think>             — MiniMax-M2.7 reasoning trace
+  //   <minimax:tool_call>...</...>   — MiniMax tool-call protocol leak
+  //                                    (the model sometimes spills the
+  //                                    raw tool-call envelope into the
+  //                                    content channel instead of the
+  //                                    structured tool_calls field)
+  //   <invoke ...>...</invoke>       — bare invoke without wrapping
+  //                                    tool_call (same leak, partial)
+  // Lone unterminated forms (model ran out of tokens mid-tag) are also
+  // dropped from the open-tag to end-of-string so the user gets a
+  // coherent answer instead of a half-thought.
   return text
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/<think>[\s\S]*$/i, '')
+    .replace(/<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/gi, '')
+    .replace(/<minimax:tool_call>[\s\S]*$/i, '')
+    .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
+    .replace(/<invoke\b[\s\S]*$/i, '')
     .replace(/^\s*\n+/, '')
     .trim();
 }
@@ -583,7 +595,7 @@ async function runMentorTurnStream(userInput, opts, onChunk) {
   }
 
   // Strip any stray <think> blocks just in case (shouldn't happen post-parser)
-  const finalAnswer = answerAccum.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const finalAnswer = stripThinkBlocks(answerAccum);
 
   const debug = {
     stage: 'ok',
@@ -835,7 +847,7 @@ async function runMentorAgentStream(userText, opts, onChunk) {
     return { turn_id: turnId, markdown: md, debug };
   }
 
-  const finalAnswer = answerAccum.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const finalAnswer = stripThinkBlocks(answerAccum);
   const debug = {
     stage: 'ok',
     model: resp2.model,
