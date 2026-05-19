@@ -19,13 +19,16 @@ const api = {
       if (payload && payload.run_id === runId) {
         try { onChunk && onChunk(payload.chunk); } catch (_e) {}
         if (payload.chunk && (payload.chunk.type === 'exit' || payload.chunk.type === 'error')) {
-          ipcRenderer.removeListener('pace:cmd-chunk', handler);
+          // Defer the actual removeListener so we don't kill the listener
+          // before chunks queued just before this 'exit' have been processed.
+          setTimeout(() => ipcRenderer.removeListener('pace:cmd-chunk', handler), 50);
         }
       }
     };
     ipcRenderer.on('pace:cmd-chunk', handler);
-    return ipcRenderer.invoke('pace:cmd-exec', { ...(input || {}), run_id: runId })
-      .finally(() => ipcRenderer.removeListener('pace:cmd-chunk', handler));
+    // Don't unsubscribe via .finally — main's IPC return might race with the
+    // exit chunk delivery. The handler self-removes 50ms after exit/error.
+    return ipcRenderer.invoke('pace:cmd-exec', { ...(input || {}), run_id: runId });
   },
   askMentor:        (input)  => ipcRenderer.invoke('pace:mentor-ask', input || {}),
   /**
@@ -42,15 +45,12 @@ const api = {
       if (payload && payload.stream_id === streamId) {
         try { onChunk && onChunk(payload.chunk); } catch (_e) {}
         if (payload.chunk && (payload.chunk.type === 'done' || payload.chunk.type === 'error')) {
-          ipcRenderer.removeListener('pace:stream-chunk', handler);
+          setTimeout(() => ipcRenderer.removeListener('pace:stream-chunk', handler), 50);
         }
       }
     };
     ipcRenderer.on('pace:stream-chunk', handler);
-    return ipcRenderer.invoke('pace:mentor-ask-stream', { ...(input || {}), stream_id: streamId })
-      .finally(() => {
-        ipcRenderer.removeListener('pace:stream-chunk', handler);
-      });
+    return ipcRenderer.invoke('pace:mentor-ask-stream', { ...(input || {}), stream_id: streamId });
   },
   getSettings:      ()       => ipcRenderer.invoke('pace:settings-get'),
   saveSettings:     (patch)  => ipcRenderer.invoke('pace:settings-save', patch || {}),

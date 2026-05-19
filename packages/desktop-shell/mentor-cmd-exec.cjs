@@ -27,7 +27,7 @@ const SAFE_PATTERNS = [
   /^git\s+pull(\s+origin(\s+\S+)?)?(\s+--rebase)?$/,
   /^git\s+fetch(\s+origin)?(\s+--all)?$/,
   /^git\s+status(\s+--short|\s+-s)?$/,
-  /^git\s+log(\s+-\d+)?(\s+--oneline)?(\s+--stat)?$/,
+  /^git\s+log(\s+(-\d+|--oneline|--stat|--all|--graph|--decorate))*$/,
   /^git\s+diff(\s+--stat)?(\s+--cached)?(\s+HEAD)?$/,
   /^git\s+branch(\s+-a|\s+--list)?$/,
   /^git\s+show\s+\S+$/,
