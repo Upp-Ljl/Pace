@@ -59,6 +59,7 @@ const api = {
   hideWindow:       ()       => ipcRenderer.invoke('pace:window-hide'),
   togglePin:        ()       => ipcRenderer.invoke('pace:window-pin-toggle'),
   windowState:      ()       => ipcRenderer.invoke('pace:window-state'),
+  captureWindow:    ()       => ipcRenderer.invoke('pace:capture-window'),
   // Team
   teamList:    ()             => ipcRenderer.invoke('pace:team-list', {}),
   teamAdd:     (member)       => ipcRenderer.invoke('pace:team-add', member || {}),

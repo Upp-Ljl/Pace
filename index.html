@@ -107,66 +107,16 @@
               </div>
             </div>
 
-            <!-- Hero 截图占位（4 方案共用同一张静态合成图） -->
+            <!-- Hero 截图：Pace 真实 Now tab (via webContents.capturePage IPC) -->
             <div class="hero-shot" aria-hidden="true">
-              <div class="shot-frame">
-                <!-- 后景 1：git commit -->
-                <div class="shot-bg-commit">
-                  <span class="dot dot-green"></span>
-                  <span class="mono"
-                    >feat: streaming output + thinking animation</span
-                  >
-                  <span class="mono mono-muted">· 4ae4781</span>
-                </div>
-
-                <!-- 后景 2：cc terminal -->
-                <div class="shot-bg-cc">
-                  <span class="mono mono-muted"
-                    >~/.claude/projects/D--lll-pace/&lt;sid&gt;.jsonl</span
-                  >
-                  <br />
-                  <span class="mono mono-faint"
-                    >&gt; type=user  content=&quot;我现在在干啥&quot;</span
-                  ><br />
-                  <span class="mono mono-faint"
-                    >&gt; cwd=&quot;D:\\lll\\pace&quot;</span
-                  >
-                </div>
-
-                <!-- 前景：Pace panel -->
-                <div class="shot-panel">
-                  <div class="shot-panel-tabs">
-                    <span class="shot-tab is-active">现在</span>
-                    <span class="shot-tab">问问</span>
-                    <span class="shot-tab">团队</span>
-                    <span class="shot-tab">提交</span>
-                  </div>
-
-                  <div class="shot-card">
-                    <div class="shot-card-head">
-                      <span class="shot-card-pin">✦</span>
-                      <span class="shot-card-title mono"
-                        >feat: streaming output + thinking animation</span
-                      >
-                    </div>
-                    <p class="shot-card-stage">
-                      <em>Planning · Scope Definition · 72%</em>
-                    </p>
-                    <p class="shot-card-body">
-                      先和后端 owner 对齐 API contract，再进 Executing 阶段——再写一周就是返工。
-                    </p>
-                    <div class="shot-card-chips">
-                      <span class="shot-chip">cc 8 轮</span>
-                      <span class="shot-chip">3 commits</span>
-                      <span class="shot-chip">RACI 2 人</span>
-                    </div>
-                  </div>
-
-                  <div class="shot-thinking">
-                    <span class="shot-thinking-label">思考 140 字 · 29s ▾</span>
-                  </div>
-                </div>
-              </div>
+              <img
+                class="hero-real-shot"
+                src="./assets/pace-now.png"
+                alt="Pace Now tab — PMP 项目透镜 + 4 张观察卡"
+                width="580"
+                height="900"
+                loading="eager"
+              />
             </div>
           </div>
         </div>

@@ -330,6 +330,24 @@ ipcMain.handle('pace:window-state', () => {
   };
 });
 
+// Capture the current panel window as a PNG (base64). Used by the
+// landing-site screenshot pipeline — chrome devtools-protocol's
+// Page.captureScreenshot doesn't return for non-headless Electron windows,
+// so we expose Electron's webContents.capturePage() via IPC instead.
+//
+// Renderer side: `await window.pace.captureWindow()` → base64 PNG string
+// (no data: prefix) or null on failure.
+ipcMain.handle('pace:capture-window', async () => {
+  if (!mainWindow) return null;
+  try {
+    const img = await mainWindow.webContents.capturePage();
+    if (!img || img.isEmpty()) return null;
+    return img.toPNG().toString('base64');
+  } catch (_e) {
+    return null;
+  }
+});
+
 // --- IPC: log ---
 
 ipcMain.on('pace:log', (_event, component, event, details, level) => {
