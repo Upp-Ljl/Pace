@@ -1340,38 +1340,38 @@ html[data-pace-theme="light"] #now-hero {
   <header id="header">
     <span id="brand">
       <span class="dot"></span>pace
-      <small id="brand-subtitle">PMP 项目导师</small>
+      <small id="brand-subtitle" data-i18n="brand.subtitle">PMP 项目导师</small>
     </span>
     <span class="spacer"></span>
-    <button class="win-btn" id="open-settings" title="设置">⚙</button>
-    <button class="win-btn" id="toggle-pin" title="置顶">📌</button>
-    <button class="win-btn danger" id="close-window" title="收回托盘">✕</button>
+    <button class="win-btn" id="open-settings" data-i18n-title="header.settings" title="设置">⚙</button>
+    <button class="win-btn" id="toggle-pin" data-i18n-title="header.pin" title="置顶">📌</button>
+    <button class="win-btn danger" id="close-window" data-i18n-title="header.close" title="收回托盘">✕</button>
   </header>
 
   <!-- AMBIENT META (thin gray) -->
-  <div id="meta">读着你的工作中…</div>
+  <div id="meta" data-i18n="meta.loading">读着你的工作中…</div>
 
   <!-- TABS -->
   <nav id="tabs">
-    <button class="tab active" data-tab="now">现在 <span class="count" id="now-count"></span></button>
-    <button class="tab" data-tab="team">团队</button>
-    <button class="tab" data-tab="ask">问问</button>
+    <button class="tab active" data-tab="now"><span data-i18n="tab.now">现在</span> <span class="count" id="now-count"></span></button>
+    <button class="tab" data-tab="team" data-i18n="tab.team">团队</button>
+    <button class="tab" data-tab="ask" data-i18n="tab.ask">问问</button>
   </nav>
 
   <!-- VIEW: NOW -->
   <div class="view" id="view-now">
     <!-- Positioning hero (always visible) -->
     <section id="now-hero">
-      <div class="hero-eyebrow">PACE · PMP 项目导师</div>
-      <div class="hero-title">把当前 cc 工作放进 PMP 项目视角</div>
-      <div class="hero-subtitle">观察你的 git / cc / 团队，给你 PMP 阶段判断 + 下一步 + 沟通话术。淡淡的，不打扰。</div>
+      <div class="hero-eyebrow" data-i18n="hero.eyebrow">PACE · PMP 项目导师</div>
+      <div class="hero-title" data-i18n="hero.title">把当前 cc 工作放进 PMP 项目视角</div>
+      <div class="hero-subtitle" data-i18n="hero.subtitle">观察你的 git / cc / 团队，给你 PMP 阶段判断 + 下一步 + 沟通话术。淡淡的，不打扰。</div>
     </section>
     <!-- Commit pane (non-sticky, collapsible 3↔10 with PMP digest) -->
     <section id="commit-pane" class="commit-pane">
       <div class="commit-pane-head">
-        <span class="commit-pane-title">最近提交</span>
+        <span class="commit-pane-title" data-i18n="commit.title">最近提交</span>
         <span class="commit-pane-meta" id="commit-pane-meta">—</span>
-        <button class="commit-toggle" id="commit-toggle" type="button">展开 ▾</button>
+        <button class="commit-toggle" id="commit-toggle" type="button">—</button>
       </div>
       <div class="commit-digest" id="commit-digest"></div>
       <ul class="commit-list" id="commit-list">
@@ -1387,17 +1387,17 @@ html[data-pace-theme="light"] #now-hero {
   <!-- VIEW: TEAM -->
   <div class="view" id="view-team" hidden>
     <div id="team-toolbar">
-      <span id="team-count" class="team-toolbar-count">0 名成员</span>
-      <button id="team-add-btn" class="team-add-btn">+ 加成员</button>
+      <span id="team-count" class="team-toolbar-count">0</span>
+      <button id="team-add-btn" class="team-add-btn" data-i18n="team.add">+ 加成员</button>
     </div>
     <div id="team-list">
       <!-- members rendered by panel.js -->
     </div>
     <div id="team-empty" class="empty-state" hidden>
       <div class="ico">👥</div>
-      还没添加过团队成员<br>
-      <span style="opacity: 0.7">登记下你的同事和他们的 RACI 关系（R 负责 / A 批准 / C 咨询 / I 告知），<br>Pace 在卡片和建议里就能具体说"找 谁 对齐"。</span>
-      <div class="label">点上面"+ 加成员"开始</div>
+      <span data-i18n="team.empty.title">还没添加过团队成员</span><br>
+      <span style="opacity: 0.7" data-i18n-html="team.empty.sub">登记下你的同事和他们的 RACI 关系（R 负责 / A 批准 / C 咨询 / I 告知），<br>Pace 在卡片和建议里就能具体说"找 谁 对齐"。</span>
+      <div class="label" data-i18n="team.empty.hint">点上面"+ 加成员"开始</div>
     </div>
   </div>
 
@@ -1405,14 +1405,14 @@ html[data-pace-theme="light"] #now-hero {
   <!-- VIEW: ASK -->
   <div class="view" id="view-ask" hidden>
     <div id="as-member-banner" hidden>
-      <span>正在以 <strong id="as-member-name">—</strong> 的视角对话</span>
-      <button class="clear-as-member" id="clear-as-member">退出 ta 的视角</button>
+      <span id="as-member-banner-text">—</span>
+      <button class="clear-as-member" id="clear-as-member" data-i18n="ask.banner.clear">退出 ta 的视角</button>
     </div>
     <div id="ask-context">
-      <span id="ask-context-text">读着你的工作上下文…</span>
+      <span id="ask-context-text" data-i18n="ask.context.loading">读着你的工作上下文…</span>
     </div>
     <div id="ask-suggestions">
-      <div class="sg-label">不知道问啥可以从这些开始</div>
+      <div class="sg-label" data-i18n="ask.suggestions.label">不知道问啥可以从这些开始</div>
       <div id="ask-suggestions-list">
         <!-- JS-generated suggestions -->
       </div>
@@ -1422,8 +1422,8 @@ html[data-pace-theme="light"] #now-hero {
 
   <!-- INPUT (only in Ask tab) -->
   <footer id="input-bar" hidden>
-    <textarea id="input" placeholder="问点什么…" rows="2"></textarea>
-    <button id="send">SEND</button>
+    <textarea id="input" data-i18n-placeholder="ask.input.placeholder" placeholder="问点什么…" rows="2"></textarea>
+    <button id="send" data-i18n="ask.send">SEND</button>
   </footer>
 
   <!-- FOOTER status bar -->
@@ -1504,77 +1504,77 @@ html[data-pace-theme="light"] #now-hero {
 <!-- Settings modal -->
 <div class="modal-backdrop" id="modal" aria-hidden="true">
   <div class="modal" role="dialog">
-    <h2>设置</h2>
+    <h2 data-i18n="settings.title">设置</h2>
 
-    <div class="settings-section-label">外观</div>
+    <div class="settings-section-label" data-i18n="settings.appearance">外观</div>
     <div class="field">
-      <label>主题</label>
+      <label data-i18n="settings.theme">主题</label>
       <div class="seg-control" id="seg-theme">
-        <button class="seg" data-value="dark">暗</button>
-        <button class="seg" data-value="light">亮</button>
-        <button class="seg" data-value="auto">跟随系统</button>
+        <button class="seg" data-value="dark" data-i18n="settings.theme.dark">暗</button>
+        <button class="seg" data-value="light" data-i18n="settings.theme.light">亮</button>
+        <button class="seg" data-value="auto" data-i18n="settings.theme.auto">跟随系统</button>
       </div>
     </div>
     <div class="field">
-      <label>字号</label>
+      <label data-i18n="settings.font_size">字号</label>
       <div class="seg-control" id="seg-font-size">
-        <button class="seg" data-value="small">小</button>
-        <button class="seg" data-value="medium">标准</button>
-        <button class="seg" data-value="large">大</button>
+        <button class="seg" data-value="small" data-i18n="settings.font.small">小</button>
+        <button class="seg" data-value="medium" data-i18n="settings.font.medium">标准</button>
+        <button class="seg" data-value="large" data-i18n="settings.font.large">大</button>
       </div>
     </div>
     <div class="field">
-      <label>面板宽度</label>
+      <label data-i18n="settings.panel_width">面板宽度</label>
       <div class="seg-control" id="seg-panel-width">
-        <button class="seg" data-value="slim">窄 (420)</button>
-        <button class="seg" data-value="regular">标准 (460)</button>
-        <button class="seg" data-value="wide">宽 (520)</button>
+        <button class="seg" data-value="slim" data-i18n="settings.width.slim">窄 (420)</button>
+        <button class="seg" data-value="regular" data-i18n="settings.width.regular">标准 (460)</button>
+        <button class="seg" data-value="wide" data-i18n="settings.width.wide">宽 (520)</button>
       </div>
     </div>
     <div class="field">
-      <label for="lang-select">语言</label>
-      <select id="lang-select" disabled>
-        <option value="zh-CN">简体中文</option>
-        <option value="en">English（v0.2）</option>
+      <label for="lang-select" data-i18n="settings.lang">语言</label>
+      <select id="lang-select">
+        <option value="zh-CN" data-i18n="settings.lang.zh">简体中文</option>
+        <option value="en" data-i18n="settings.lang.en">English</option>
       </select>
-      <div class="hint">v0.1 仅中文，i18n 在 v0.2 上线。</div>
+      <div class="hint" data-i18n="settings.lang.hint">切换语言后会刷新 panel。</div>
     </div>
 
-    <div class="settings-section-label">行为</div>
+    <div class="settings-section-label" data-i18n="settings.behavior">行为</div>
     <div class="field checkbox-field">
       <label class="check-row" style="opacity: 0.55">
         <input type="checkbox" id="opt-autostart" disabled>
-        <span>开机自动启动 <em>（v0.2 占位）</em></span>
+        <span data-i18n-html="settings.autostart">开机自动启动 <em>（v0.2 占位）</em></span>
       </label>
     </div>
     <div class="field checkbox-field">
       <label class="check-row" style="opacity: 0.55">
         <input type="checkbox" id="opt-start-minimized" disabled>
-        <span>启动时直接缩到托盘 <em>（v0.2 占位）</em></span>
+        <span data-i18n-html="settings.start_min">启动时直接缩到托盘 <em>（v0.2 占位）</em></span>
       </label>
     </div>
 
-    <div class="settings-section-label">LLM Provider</div>
+    <div class="settings-section-label" data-i18n="settings.llm">LLM Provider</div>
     <div class="field">
-      <label for="minimax-base-url">MiniMax Base URL</label>
+      <label for="minimax-base-url" data-i18n="settings.minimax.url">MiniMax Base URL</label>
       <input id="minimax-base-url" type="text" placeholder="https://api.minimaxi.com/v1" autocomplete="off">
-      <div class="hint">默认 <code>https://api.minimaxi.com/v1</code>。</div>
+      <div class="hint" data-i18n-html="settings.minimax.url.hint">默认 <code>https://api.minimaxi.com/v1</code>。</div>
     </div>
     <div class="field">
-      <label for="minimax-api-key">MiniMax API Key</label>
-      <input id="minimax-api-key" type="password" placeholder="粘贴 Bearer token" autocomplete="off">
-      <div class="hint">本地存到 <code>~/.pace/config.json</code>。或环境变量 <code>MINIMAX_API_KEY</code>。</div>
+      <label for="minimax-api-key" data-i18n="settings.minimax.key">MiniMax API Key</label>
+      <input id="minimax-api-key" type="password" placeholder="Bearer token" autocomplete="off">
+      <div class="hint" data-i18n-html="settings.minimax.key.hint">本地存到 <code>~/.pace/config.json</code>。或环境变量 <code>MINIMAX_API_KEY</code>。</div>
     </div>
     <div class="field">
-      <label for="minimax-model">MiniMax Model</label>
+      <label for="minimax-model" data-i18n="settings.minimax.model">MiniMax Model</label>
       <input id="minimax-model" type="text" placeholder="MiniMax-M2.7-highspeed" autocomplete="off">
-      <div class="hint">默认 <code>MiniMax-M2.7-highspeed</code>。基础版 <code>MiniMax-M2.7</code>，旧版 <code>MiniMax-M2.5</code> / <code>MiniMax-M2.1</code> / <code>MiniMax-M2</code> 均可。</div>
+      <div class="hint" data-i18n-html="settings.minimax.model.hint">默认 <code>MiniMax-M2.7-highspeed</code>。</div>
     </div>
 
-    <div id="settings-status" class="status-row" aria-live="polite">加载中…</div>
+    <div id="settings-status" class="status-row" aria-live="polite" data-i18n="settings.status.loading">加载中…</div>
     <div class="row">
-      <button class="secondary" id="close-settings">CANCEL</button>
-      <button class="primary" id="save-settings">SAVE</button>
+      <button class="secondary" id="close-settings" data-i18n="settings.cancel">CANCEL</button>
+      <button class="primary" id="save-settings" data-i18n="settings.save">SAVE</button>
     </div>
   </div>
 </div>

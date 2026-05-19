@@ -61,6 +61,30 @@ let activeAsMember = null;
 // multi-turn conversation history for the Ask tab (current session)
 let askConversation = [];
 
+// --- i18n ---
+let STRINGS = {};
+let LANG = 'zh-CN';
+function t(key, params) {
+  let raw = STRINGS[key];
+  if (raw == null) raw = key;
+  if (!params) return raw;
+  return raw.replace(/\{(\w+)\}/g, (m, k) => (params[k] != null ? String(params[k]) : m));
+}
+function applyI18nToDom(root) {
+  (root || document).querySelectorAll('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  (root || document).querySelectorAll('[data-i18n-html]').forEach((el) => {
+    el.innerHTML = t(el.dataset.i18nHtml);
+  });
+  (root || document).querySelectorAll('[data-i18n-title]').forEach((el) => {
+    el.title = t(el.dataset.i18nTitle);
+  });
+  (root || document).querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+}
+
 // Team
 const teamListEl       = document.getElementById('team-list');
 const teamEmptyEl      = document.getElementById('team-empty');
@@ -132,10 +156,10 @@ function buildMetaLine(ctx, settings) {
     parts.push(root);
     if (ctx.git.git_branch) parts.push(ctx.git.git_branch);
     const dirty = ctx.git.dirty_count || 0;
-    if (dirty > 0) parts.push(dirty + ' 改动');
-    else parts.push('clean');
+    if (dirty > 0) parts.push(dirty + ' ' + t('meta.dirty'));
+    else parts.push(t('meta.clean'));
   }
-  parts.push(settings.has_minimax_config ? settings.minimax_model.replace(/^MiniMax-/, '') : 'no key');
+  parts.push(settings.has_minimax_config ? settings.minimax_model.replace(/^MiniMax-/, '') : t('meta.no_key'));
   return parts.join(' · ');
 }
 
@@ -161,7 +185,7 @@ function teamSummary(team) {
   if (!team || !team.length) return null;
   return team.map((m) => {
     const raci = (m.raci || []).join('');
-    const agent = m.agent_id ? ` 〈agent: ${m.agent_id}〉` : '';
+    const agent = m.agent_id ? (LANG === 'en' ? ` 〈agent: ${m.agent_id}〉` : ` 〈agent: ${m.agent_id}〉`) : '';
     return `${m.name}${m.role ? '/' + m.role : ''}${raci ? '(' + raci + ')' : ''}${agent}`;
   }).join(', ');
 }
@@ -176,34 +200,33 @@ function generateCards(snapshot) {
     cards.push({
       id: 'no-key',
       icon: '⚙',
-      title: 'LLM 还没配好',
-      sub: '点右上角设置粘贴 MiniMax key，Pace 就能开口了',
+      title: t('card.no_key.title'),
+      sub: t('card.no_key.sub'),
       seed: null,
       priority: 0,
     });
   }
 
-  // Card: empty team prompt (only if git active + no team yet + has some commits)
+  // Card: empty team prompt
   if (ctx.git && ctx.git.available && (!team || team.length === 0)) {
     cards.push({
       id: 'no-team',
       icon: '👥',
-      title: 'Pace 还不认识你的同事',
-      sub: '去"团队" tab 加几个，建议会从泛泛"找产品"具体到"找 Tom (A)"',
+      title: t('card.no_team.title'),
+      sub: t('card.no_team.sub'),
       seed: null,
       priority: 6,
     });
   }
 
-  // Card: git dirty state
   if (ctx.git && ctx.git.available) {
     const dirty = ctx.git.dirty_count || 0;
     if (dirty > 0) {
       cards.push({
         id: 'git-dirty',
         icon: '📂',
-        title: `工作区有 ${dirty} 个文件改动`,
-        sub: '还没 commit',
+        title: t('card.git_dirty.title', { n: dirty }),
+        sub: t('card.git_dirty.sub'),
         seed: `用户当前在 ${ctx.git.git_root} 项目的 ${ctx.git.git_branch} 分支上，有 ${dirty} 个文件未提交。最近的 commit 主题是：${(ctx.git.recent_log || []).slice(0, 3).join(' / ')}。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMP 角度淡淡观察一下这个状态，并给一两个轻量下一步提示。${teamLine ? '如果合适，可以具体说找哪位同事对齐。' : ''}请用观察语气，不要说教，80 字内。`,
         priority: 1,
       });
@@ -214,8 +237,8 @@ function generateCards(snapshot) {
       cards.push({
         id: 'on-main',
         icon: '🌿',
-        title: `直接在 ${ctx.git.git_branch} 分支工作`,
-        sub: '没有切到 feature / 任务分支',
+        title: t('card.on_main.title', { branch: ctx.git.git_branch }),
+        sub: t('card.on_main.sub'),
         seed: `用户没有切 feature 分支，直接在 ${ctx.git.git_branch} 上做改动。${teamLine ? '团队：' + teamLine + '。' : ''}这个工作流的潜在风险是什么？请用淡淡观察的语气，80 字内，给一两条提示。`,
         priority: 2,
       });
@@ -227,8 +250,8 @@ function generateCards(snapshot) {
       cards.push({
         id: 'commit-theme',
         icon: '📝',
-        title: `最近 ${(ctx.git.recent_log || []).length} 个 commit 都在做 ${theme}`,
-        sub: '从模式看，你处在一个具体的迭代阶段',
+        title: t('card.commit_theme.title', { n: (ctx.git.recent_log || []).length, theme }),
+        sub: t('card.commit_theme.sub'),
         seed: `用户最近 5 个 commit 都是"${theme}"主题。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMBOK 5 大过程组看，这通常处在哪个阶段？阶段过渡前还需要做什么？${teamLine ? '哪位同事最该被 loop 进来？' : ''}请用淡淡观察的语气，80 字内。`,
         priority: 3,
       });
@@ -240,25 +263,23 @@ function generateCards(snapshot) {
     cards.push({
       id: 'ahead-of-origin',
       icon: '↗',
-      title: `本地比 origin/${ctx.git.git_branch} 领先 ${ctx.git.ahead} 个 commit`,
-      sub: '还没 push',
+      title: t('card.ahead.title', { branch: ctx.git.git_branch, n: ctx.git.ahead }),
+      sub: t('card.ahead.sub'),
       seed: `用户本地有 ${ctx.git.ahead} 个 commit 没 push 到 origin。${teamLine ? '团队：' + teamLine + '。' : ''}从协作风险角度，淡淡观察一下这个状态。80 字内。`,
       priority: 1,
     });
   }
-  // Card: upstream gap — behind
   if (ctx.git && ctx.git.available && typeof ctx.git.behind === 'number' && ctx.git.behind > 0) {
     cards.push({
       id: 'behind-origin',
       icon: '↘',
-      title: `本地落后 origin/${ctx.git.git_branch} ${ctx.git.behind} 个 commit`,
-      sub: '还没拉下来——可能即将冲突',
+      title: t('card.behind.title', { branch: ctx.git.git_branch, n: ctx.git.behind }),
+      sub: t('card.behind.sub'),
       seed: `用户本地落后远端 ${ctx.git.behind} 个 commit 没 pull。${teamLine ? '团队：' + teamLine + '。' : ''}观察一下风险，80 字内。`,
       priority: 0,
     });
   }
 
-  // Card: time-since-last-commit
   if (ctx.git && ctx.git.available && ctx.git.commits && ctx.git.commits.length) {
     const lastTs = ctx.git.commits[0].ts;
     if (lastTs) {
@@ -267,8 +288,8 @@ function generateCards(snapshot) {
         cards.push({
           id: 'long-since-commit',
           icon: '⏳',
-          title: `距上次 commit ${timeAgo(lastTs)}`,
-          sub: `工作区还有 ${ctx.git.dirty_count} 个改动 — 长时间没 commit 风险有`,
+          title: t('card.long_since.title', { ago: timeAgo(lastTs) }),
+          sub: t('card.long_since.sub', { n: ctx.git.dirty_count }),
           seed: `用户上次 commit 是 ${timeAgo(lastTs)}，工作区还堆着 ${ctx.git.dirty_count} 个未提交改动。${teamLine ? '团队：' + teamLine + '。' : ''}从工作节奏角度，淡淡说几句风险和下一步。80 字内。`,
           priority: 2,
         });
@@ -276,47 +297,43 @@ function generateCards(snapshot) {
     }
   }
 
-  // Card: package.json touched (semantic file watch)
   if (ctx.git && ctx.git.available && ctx.git.changed_files) {
     const pkgTouched = ctx.git.changed_files.some((f) => /(^|[\\/])package\.json$/.test(f.path));
     if (pkgTouched) {
       cards.push({
         id: 'pkg-json-touched',
         icon: '📦',
-        title: '`package.json` 有改动',
-        sub: '记得 npm install 才能让依赖落地',
+        title: t('card.pkg_json.title'),
+        sub: t('card.pkg_json.sub'),
         seed: null,
         priority: 4,
       });
     }
-    // Card: docs / README untouched when code changed substantively
     const codeChanged = ctx.git.changed_files.some((f) => /\.(c?js|mjs|ts|tsx|jsx|cjs|py|go|rs|java|html|css|cjs)$/i.test(f.path));
     const docsChanged = ctx.git.changed_files.some((f) => /(README|CHANGELOG|docs[\\/])/i.test(f.path));
     if (codeChanged && !docsChanged && ctx.git.dirty_count >= 3) {
       cards.push({
         id: 'docs-untouched',
         icon: '📖',
-        title: '代码改了，文档没动',
-        sub: 'README / CHANGELOG / docs/ 都没在 diff 里',
+        title: t('card.docs.title'),
+        sub: t('card.docs.sub'),
         seed: `用户改了 ${ctx.git.dirty_count} 个代码文件，但 README / CHANGELOG / docs 都没碰。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMP "质量管理" 或 "沟通管理" 视角，淡淡观察这个状态——什么时候该同步文档？80 字内。`,
         priority: 5,
       });
     }
-    // Card: tests untouched
     const testsChanged = ctx.git.changed_files.some((f) => /(\.test\.|\.spec\.|__tests__[\\/]|scripts[\\/]smoke-|tests?[\\/])/i.test(f.path));
     if (codeChanged && !testsChanged && ctx.git.dirty_count >= 4) {
       cards.push({
         id: 'tests-untouched',
         icon: '🧪',
-        title: '代码改了，测试没跟',
-        sub: '改了 ' + ctx.git.dirty_count + ' 个文件但 test/smoke 没动',
+        title: t('card.tests.title'),
+        sub: t('card.tests.sub', { n: ctx.git.dirty_count }),
         seed: `用户改了 ${ctx.git.dirty_count} 个代码文件但测试 / smoke 都没动。${teamLine ? '团队：' + teamLine + '。' : ''}从质量管理角度，淡淡观察。80 字内。`,
         priority: 5,
       });
     }
   }
 
-  // Card: scope drift — recent commit themes mixed across categories
   if (ctx.git && ctx.git.available && ctx.git.commits && ctx.git.commits.length >= 5) {
     const themeCounts = {};
     for (const c of ctx.git.commits.slice(0, 8)) {
@@ -331,21 +348,20 @@ function generateCards(snapshot) {
       cards.push({
         id: 'scope-drift',
         icon: '🌀',
-        title: `最近 commit 主题分散`,
-        sub: themeKeys.slice(0, 5).join(' · ') + ' 都有',
+        title: t('card.scope_drift.title'),
+        sub: themeKeys.slice(0, 5).join(' · '),
         seed: `用户最近 8 个 commit 主题分散：${themeKeys.join(', ')}。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMP 范围管理角度看，这是 scope creep 还是合理的多线并进？淡淡观察，80 字内。`,
         priority: 6,
       });
     }
   }
 
-  // Card: cc activity
   if (ctx.cc_session) {
     cards.push({
       id: 'cc-activity',
       icon: '💬',
-      title: `Claude Code 上次活动 ${timeAgo(ctx.cc_session.last_mtime_ms)}`,
-      sub: '你刚才在和 cc 一起干活',
+      title: t('card.cc_activity.title', { ago: timeAgo(ctx.cc_session.last_mtime_ms) }),
+      sub: t('card.cc_activity.sub'),
       seed: `用户刚和 Claude Code 协作，上次 cc session 活动 ${timeAgo(ctx.cc_session.last_mtime_ms)}。${teamLine ? '团队：' + teamLine + '。' : ''}从 PMP 视角，刚结束一段密集协作后，建议的"复盘 / 校准"动作是什么？请用淡淡观察的语气，80 字内。`,
       priority: 4,
     });
@@ -353,20 +369,19 @@ function generateCards(snapshot) {
     cards.push({
       id: 'cc-quiet',
       icon: '🤫',
-      title: '当前目录没找到 cc session',
-      sub: '你在手敲，或者 cc 工作在别的目录',
+      title: t('card.cc_quiet.title'),
+      sub: t('card.cc_quiet.sub'),
       seed: null,
       priority: 9,
     });
   }
 
-  // Card: mentor sleep
   if (!recent_history || recent_history.length === 0) {
     cards.push({
       id: 'mentor-quiet',
       icon: '💭',
-      title: '我还没和你聊过',
-      sub: '想问什么直接到"问问"那里，或点卡片里的"想看建议"',
+      title: t('card.mentor_quiet.title'),
+      sub: t('card.mentor_quiet.sub'),
       seed: null,
       priority: 8,
     });
@@ -378,8 +393,8 @@ function generateCards(snapshot) {
         cards.push({
           id: 'mentor-stale',
           icon: '⏱',
-          title: `上次和我对话是 ${timeAgo(new Date(lastTs).getTime())}`,
-          sub: '工作有进展了吗',
+          title: t('card.mentor_stale.title', { ago: timeAgo(new Date(lastTs).getTime()) }),
+          sub: t('card.mentor_stale.sub'),
           seed: null,
           priority: 7,
         });
@@ -490,12 +505,12 @@ function renderCommitPane(ctx) {
   const metaParts = [];
   if (ctx.git && ctx.git.available) {
     if (typeof ctx.git.ahead === 'number') {
-      if (ctx.git.ahead > 0) metaParts.push(`领先 ${ctx.git.ahead}`);
-      if (ctx.git.behind > 0) metaParts.push(`落后 ${ctx.git.behind}`);
-      if (ctx.git.ahead === 0 && ctx.git.behind === 0) metaParts.push('已同步');
+      if (ctx.git.ahead > 0)  metaParts.push(t('commit.meta.ahead',  { n: ctx.git.ahead }));
+      if (ctx.git.behind > 0) metaParts.push(t('commit.meta.behind', { n: ctx.git.behind }));
+      if (ctx.git.ahead === 0 && ctx.git.behind === 0) metaParts.push(t('commit.meta.sync'));
     }
     if (typeof ctx.git.dirty_count === 'number' && ctx.git.dirty_count > 0) {
-      metaParts.push(`${ctx.git.dirty_count} 未提交`);
+      metaParts.push(t('commit.meta.uncommitted', { n: ctx.git.dirty_count }));
     }
   }
   commitPaneMetaEl.textContent = metaParts.length ? metaParts.join(' · ') : '';
@@ -503,7 +518,7 @@ function renderCommitPane(ctx) {
   if (!commits.length) {
     const empty = document.createElement('li');
     empty.className = 'commit-empty';
-    empty.textContent = ctx.git && ctx.git.available ? '没有 commit 历史' : '当前目录不是 git 仓库';
+    empty.textContent = ctx.git && ctx.git.available ? t('commit.empty') : t('commit.not_git');
     commitListEl.appendChild(empty);
     commitToggleBtn.hidden = true;
     return;
@@ -570,9 +585,9 @@ function renderCommitPane(ctx) {
   if (commits.length > COLLAPSED_COUNT) {
     commitToggleBtn.hidden = false;
     if (commitPaneExpanded) {
-      commitToggleBtn.textContent = '收起 ▴';
+      commitToggleBtn.textContent = t('commit.collapse');
     } else {
-      commitToggleBtn.textContent = `+${Math.min(commits.length, EXPANDED_COUNT) - COLLAPSED_COUNT} 条 ▾`;
+      commitToggleBtn.textContent = t('commit.expand_n', { n: Math.min(commits.length, EXPANDED_COUNT) - COLLAPSED_COUNT });
     }
   } else {
     commitToggleBtn.hidden = true;
@@ -602,7 +617,7 @@ function renderNowFeed(snapshot) {
   if (!cards.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.innerHTML = '<div class="ico">∙</div>这会儿没什么特别的<br><span style="opacity:0.7">git 干净 · cc 没动静 · 也没要紧的事卡着</span>';
+    empty.innerHTML = `<div class="ico">∙</div>${t('card.empty')}<br><span style="opacity:0.7">${t('card.empty.sub')}</span>`;
     cardsSection.appendChild(empty);
     return;
   }
@@ -641,7 +656,7 @@ function renderCard(card) {
   const dismiss = document.createElement('button');
   dismiss.className = 'card-dismiss';
   dismiss.textContent = '✕';
-  dismiss.title = '收起这条';
+  dismiss.title = t('card.dismiss');
   dismiss.addEventListener('click', () => {
     dismissed.add(card.id);
     root.classList.add('dismissed');
@@ -656,7 +671,7 @@ function renderCard(card) {
     actions.className = 'card-actions';
     const askLink = document.createElement('button');
     askLink.className = 'card-link';
-    askLink.textContent = '想看建议 →';
+    askLink.textContent = t('card.action.suggest');
     askLink.addEventListener('click', () => expandCard(root, card, askLink));
     actions.appendChild(askLink);
     root.appendChild(actions);
@@ -668,7 +683,7 @@ function renderCard(card) {
 async function expandCard(cardEl, card, linkEl) {
   linkEl.disabled = true;
   linkEl.classList.add('loading');
-  linkEl.textContent = '在想…';
+  linkEl.textContent = t('card.action.expanding');
   // Create inline streaming target inside the card
   const replyWrap = document.createElement('div');
   replyWrap.className = 'card-reply';
@@ -677,12 +692,12 @@ async function expandCard(cardEl, card, linkEl) {
   try {
     const reply = await streamMentorInto(replyWrap, card.seed, {});
     linkEl.classList.remove('loading');
-    linkEl.textContent = '已展开';
+    linkEl.textContent = t('card.action.expanded');
     linkEl.disabled = true;
     window.pace.log('panel', 'card_expanded', { card_id: card.id, stage: reply && reply.debug && reply.debug.stage });
   } catch (err) {
     linkEl.classList.remove('loading');
-    linkEl.textContent = '出错了，再试 →';
+    linkEl.textContent = t('card.action.retry');
     linkEl.disabled = false;
     window.pace.log('panel', 'card_expand_error', { card_id: card.id, error: String(err) }, 'error');
   }
@@ -780,7 +795,7 @@ function makeStreamingMentor(parent) {
   thinkHead.appendChild(brainEl);
   const thinkLabel = document.createElement('span');
   thinkLabel.className = 'thinking-label';
-  thinkLabel.textContent = '推理中';
+  thinkLabel.textContent = t('stream.thinking');
   thinkHead.appendChild(thinkLabel);
   const thinkMeta = document.createElement('span');
   thinkMeta.className = 'thinking-meta';
@@ -854,7 +869,7 @@ async function streamMentorInto(parent, text, opts) {
       if (!firstAnswerSeen) {
         firstAnswerSeen = true;
         // Lock thinking summary
-        ui.thinkLabel.textContent = '推理完成';
+        ui.thinkLabel.textContent = t('stream.thinking_done');
         ui.thinking.classList.add('done');
         // Remove typing placeholder cursor and start text node
         ui.cursor.classList.add('blinking');
@@ -962,14 +977,14 @@ function renderAskContext(snap) {
     const root = (ctx.git.git_root || '').split(/[\\/]/).pop();
     parts.push(`<strong>${root}</strong>`);
     parts.push(ctx.git.git_branch || '—');
-    if (ctx.git.dirty_count) parts.push(`<span class="name">${ctx.git.dirty_count}</span> 改动`);
-    if (typeof ctx.git.ahead === 'number' && ctx.git.ahead > 0) parts.push(`领先 <span class="name">${ctx.git.ahead}</span>`);
+    if (ctx.git.dirty_count) parts.push(t('ask.context.changes', { n: ctx.git.dirty_count }));
+    if (typeof ctx.git.ahead === 'number' && ctx.git.ahead > 0) parts.push(t('ask.context.ahead', { n: ctx.git.ahead }));
   } else {
-    parts.push('当前目录不是 git 仓库');
+    parts.push(t('ask.context.no_git'));
   }
-  if (snap.team && snap.team.length) parts.push(`团队 <span class="name">${snap.team.length}</span> 人`);
-  if (snap.recent_history && snap.recent_history.length) parts.push(`已聊 <span class="name">${snap.recent_history.length}</span> 次`);
-  el.innerHTML = '我这边看到的：' + parts.join(' · ');
+  if (snap.team && snap.team.length) parts.push(t('ask.context.team_n', { n: snap.team.length }));
+  if (snap.recent_history && snap.recent_history.length) parts.push(t('ask.context.history', { n: snap.recent_history.length }));
+  el.innerHTML = t('ask.context.prefix') + parts.join(' · ');
 }
 
 function generateAskSuggestions(snap) {
@@ -977,81 +992,43 @@ function generateAskSuggestions(snap) {
   const team = snap.team || [];
   const sugs = [];
 
-  // Always available — anchor of "PMP 角度问"
-  sugs.push({
-    label: '我现在做的事处于哪个阶段？',
-    tag: 'PMP 阶段',
-    prompt: '我现在做的事处于项目的哪个阶段（5 大过程组的哪个）？下一步合理应该做什么？',
-  });
+  sugs.push({ label: t('sug.stage'), tag: t('sug.stage.tag'), prompt: t('sug.stage.prompt') });
 
-  // Git-aware
   if (ctx.git && ctx.git.available) {
     const dirty = ctx.git.dirty_count || 0;
     if (dirty >= 3) {
-      sugs.push({
-        label: `${dirty} 个文件没 commit · 一起提还是分开？`,
-        tag: '范围',
-        prompt: `我有 ${dirty} 个文件改动还没 commit. 这些改动该一起提交，还是按主题分开几个 commit？从范围管理角度怎么看？`,
-      });
+      sugs.push({ label: t('sug.dirty.label', {n: dirty}), tag: t('sug.dirty.tag'), prompt: t('sug.dirty.prompt', {n: dirty}) });
     }
     if (ctx.git.git_branch === 'main' || ctx.git.git_branch === 'master') {
-      sugs.push({
-        label: `在 ${ctx.git.git_branch} 直接改 · 风险大吗？`,
-        tag: '风险',
-        prompt: `我直接在 ${ctx.git.git_branch} 分支上做改动，没切 feature 分支。这个工作流的潜在风险是什么？什么场景下值得切？`,
-      });
+      sugs.push({ label: t('sug.main.label', {branch: ctx.git.git_branch}), tag: t('sug.main.tag'), prompt: t('sug.main.prompt', {branch: ctx.git.git_branch}) });
     }
     if (typeof ctx.git.ahead === 'number' && ctx.git.ahead >= 3) {
-      sugs.push({
-        label: `${ctx.git.ahead} 个 commit 没 push · 要紧吗？`,
-        tag: '协作',
-        prompt: `我本地有 ${ctx.git.ahead} 个 commit 没 push 到 origin。从协作 / 风险角度，这个状态有什么风险？`,
-      });
+      sugs.push({ label: t('sug.ahead.label', {n: ctx.git.ahead}), tag: t('sug.ahead.tag'), prompt: t('sug.ahead.prompt', {n: ctx.git.ahead}) });
     }
-    // Recent commit theme — invite reflection
     const recent = (ctx.git.commits || []).slice(0, 5);
     if (recent.length >= 3) {
       const lastSubject = recent[0].subject || '';
-      sugs.push({
-        label: `刚才那个 commit · 是个合理动作吗？`,
-        tag: '复盘',
-        prompt: `最新的 commit 是 \`${recent[0].hash} ${lastSubject}\`。从 PMP 视角看，这个动作处在哪个阶段？是否合理？有没有下一步该做的？`,
-      });
+      sugs.push({ label: t('sug.review.label'), tag: t('sug.review.tag'), prompt: t('sug.review.prompt', {hash: recent[0].hash, subject: lastSubject}) });
     }
   }
 
-  // Team-aware
   if (team.length > 0) {
-    // Top 2-3 team members → personalized communication prompts
     const top = team.slice(0, 2);
     for (const m of top) {
-      const roleStr = m.role ? `（${m.role}）` : '';
+      const roleStr = m.role ? (LANG === 'en' ? ` (${m.role})` : `（${m.role}）`) : '';
+      const raci = (m.raci && m.raci.length) ? ' · RACI ' + m.raci.join('') : '';
       sugs.push({
-        label: `怎么跟 ${m.name}${roleStr} 对齐这事？`,
-        tag: '沟通',
-        prompt: `我想跟 ${m.name}${roleStr}${(m.raci && m.raci.length) ? ' · RACI ' + m.raci.join('') : ''} 对齐我当前在做的改动。帮我用前-中-后框架写一段话术。`,
+        label: t('sug.team.label', {name: m.name, role: roleStr}),
+        tag: t('sug.team.tag'),
+        prompt: t('sug.team.prompt', {name: m.name, role: roleStr, raci}),
       });
     }
   } else if (ctx.git && ctx.git.available) {
-    sugs.push({
-      label: '我团队里有哪些角色该 loop 进来？',
-      tag: '干系人',
-      prompt: '基于我当前的工作内容，从 PMP 干系人管理角度，可能需要 loop 进来的典型角色有哪些？我还没在 Pace 里登记同事，先帮我列下典型的。',
-    });
+    sugs.push({ label: t('sug.team_loop.label'), tag: t('sug.team_loop.tag'), prompt: t('sug.team_loop.prompt') });
   }
 
-  // Universal closers
-  sugs.push({
-    label: '这事有什么风险我没想到？',
-    tag: '风险',
-    prompt: '我现在做的这事，有哪些潜在风险或我可能漏掉的事？从 PMP 风险管理角度淡淡说一下。',
-  });
-
-  sugs.push({
-    label: '到现在为止节奏合不合理？',
-    tag: '复盘',
-    prompt: '基于我的 git 历史 + 团队 + cc 活动，到目前为止我的工作节奏合不合理？有什么值得调整的？',
-  });
+  sugs.push({ label: t('sug.risk.label'), tag: t('sug.risk.tag'), prompt: t('sug.risk.prompt') });
+  sugs.push({ label: t('sug.tempo.label'), tag: t('sug.tempo.tag'), prompt: t('sug.tempo.prompt') });
 
   // De-dupe by label + cap
   const seen = new Set();
@@ -1123,19 +1100,22 @@ async function loadSettings() {
     setSegActive(segTheme,      s.theme || 'dark');
     setSegActive(segFontSize,   s.font_size || 'medium');
     setSegActive(segPanelWidth, s.panel_width || 'regular');
+    const langSel = document.getElementById('lang-select');
+    if (langSel) langSel.value = s.language || 'zh-CN';
     applyAppearance(s);
     if (s.has_minimax_config) {
       settingsStatusEl.className = 'status-row ok';
-      settingsStatusEl.textContent =
-        '✓ MiniMax 已配置 · key 来自 ' + (s.minimax_api_key_source === 'env' ? '环境变量' : 'config.json') +
-        ' · 模型 ' + s.minimax_model;
+      settingsStatusEl.textContent = t('settings.status.ok', {
+        src: t(s.minimax_api_key_source === 'env' ? 'settings.key_src.env' : 'settings.key_src.config'),
+        model: s.minimax_model,
+      });
     } else {
       settingsStatusEl.className = 'status-row warn';
-      settingsStatusEl.textContent = '⚠ 还没设 API key — 配上后 mentor 才能回答。';
+      settingsStatusEl.textContent = t('settings.status.no_key');
     }
   } catch (err) {
     settingsStatusEl.className = 'status-row warn';
-    settingsStatusEl.textContent = '加载设置出错：' + err.message;
+    settingsStatusEl.textContent = err.message;
   }
 }
 
@@ -1173,12 +1153,15 @@ document.addEventListener('keydown', (e) => {
 saveSettingsBtn.addEventListener('click', async () => {
   saveSettingsBtn.disabled = true;
   try {
+    const langSel = document.getElementById('lang-select');
+    const newLang = (langSel && langSel.value) || 'zh-CN';
     const patch = {
       minimax_base_url: minimaxBaseUrlInput.value,
       minimax_model:    minimaxModelInput.value,
       theme:       segTheme.querySelector('.seg.active')?.dataset.value || 'dark',
       font_size:   segFontSize.querySelector('.seg.active')?.dataset.value || 'medium',
       panel_width: segPanelWidth.querySelector('.seg.active')?.dataset.value || 'regular',
+      language:    newLang,
     };
     const newKey = minimaxApiKeyInput.value.trim();
     if (newKey) patch.minimax_api_key = newKey;
@@ -1186,16 +1169,19 @@ saveSettingsBtn.addEventListener('click', async () => {
     applyAppearance(s);
     if (s && s.has_minimax_config) {
       settingsStatusEl.className = 'status-row ok';
-      settingsStatusEl.textContent = '✓ 已保存到 ' + s.config_path;
+      settingsStatusEl.textContent = t('settings.status.saved', { path: s.config_path });
     } else {
       settingsStatusEl.className = 'status-row warn';
-      settingsStatusEl.textContent = '⚠ 保存了但仍缺 API key';
+      settingsStatusEl.textContent = t('settings.status.no_key_after_save');
     }
     minimaxApiKeyInput.value = '';
     refreshAll();
+    if (newLang !== LANG) {
+      setTimeout(() => location.reload(), 250);
+    }
   } catch (err) {
     settingsStatusEl.className = 'status-row warn';
-    settingsStatusEl.textContent = '保存出错：' + err.message;
+    settingsStatusEl.textContent = t('settings.status.save_err', { msg: err.message });
   } finally {
     saveSettingsBtn.disabled = false;
   }
@@ -1206,7 +1192,7 @@ async function refreshAll() {
   let snap;
   try { snap = await window.pace.contextSnapshot({ includeTranscript: false }); }
   catch (err) {
-    headerMetaEl.textContent = '读取上下文出错';
+    headerMetaEl.textContent = err && err.message || 'snapshot error';
     return;
   }
   headerMetaEl.textContent = buildMetaLine(snap.ctx, snap.settings);
@@ -1232,7 +1218,7 @@ function initials(name) {
 
 function renderTeam(members) {
   teamListEl.innerHTML = '';
-  teamCountEl.textContent = `${members.length} 名成员`;
+  teamCountEl.textContent = t('team.count', { n: members.length });
   if (members.length === 0) {
     teamEmptyEl.hidden = false;
     return;
@@ -1302,8 +1288,8 @@ function renderTeam(members) {
 
     const talkBtn = document.createElement('button');
     talkBtn.className = 'tm-talk-btn';
-    talkBtn.textContent = '💬 和 ta 谈';
-    talkBtn.title = `以 ${m.name} 的视角和你对话`;
+    talkBtn.textContent = t('team.talk');
+    talkBtn.title = t('team.talk.title', { name: m.name });
     talkBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       startMemberPersona(m);
@@ -1313,7 +1299,7 @@ function renderTeam(members) {
     const editBtn = document.createElement('button');
     editBtn.className = 'tm-action-btn';
     editBtn.textContent = '✎';
-    editBtn.title = '编辑';
+    editBtn.title = t('team.edit');
     editBtn.addEventListener('click', () => openMemberModal(m));
     actions.appendChild(editBtn);
     row.appendChild(actions);
@@ -1325,20 +1311,20 @@ function renderTeam(members) {
 // --- Member persona (Ask tab as member) ---
 function startMemberPersona(member) {
   activeAsMember = member;
-  asMemberName.textContent = `${member.name}${member.role ? '（' + member.role + '）' : ''}`;
+  const nameStr = `${member.name}${member.role ? (LANG === 'en' ? ' (' + member.role + ')' : '（' + member.role + '）') : ''}`;
+  const bannerText = document.getElementById('as-member-banner-text');
+  if (bannerText) bannerText.innerHTML = t('ask.banner.persona', { name: nameStr });
   asMemberBanner.hidden = false;
-  // Persona switch starts a fresh conversation
   askConversation = [];
   switchTab('ask');
   inputEl.focus();
-  inputEl.placeholder = `用问 ${member.name} 的语气提问…`;
+  inputEl.placeholder = t('ask.persona.placeholder', { name: member.name });
 }
 
 function clearMemberPersona() {
   activeAsMember = null;
   asMemberBanner.hidden = true;
-  inputEl.placeholder = '问点什么…';
-  // Also clear conversation history — switching persona = new conversation
+  inputEl.placeholder = t('ask.input.placeholder');
   askConversation = [];
 }
 
@@ -1377,7 +1363,7 @@ function openMemberModal(member) {
   memberModalEl.classList.add('open');
   memberModalEl.setAttribute('aria-hidden', 'false');
   if (member && member.id) {
-    memberModalTitle.textContent = '编辑成员';
+    memberModalTitle.textContent = t('member.modal.edit');
     memberIdInput.value = String(member.id);
     memberNameInput.value = member.name || '';
     memberRoleSelect.value = member.role || '';
@@ -1386,7 +1372,7 @@ function openMemberModal(member) {
     setRaci(member.raci || []);
     memberDeleteBtn.style.display = 'inline-block';
   } else {
-    memberModalTitle.textContent = '添加成员';
+    memberModalTitle.textContent = t('member.modal.add');
     memberIdInput.value = '';
     memberNameInput.value = '';
     memberRoleSelect.value = '';
@@ -1437,7 +1423,7 @@ memberSaveBtn.addEventListener('click', async () => {
 
 memberDeleteBtn.addEventListener('click', async () => {
   if (!memberIdInput.value) return;
-  if (!confirm('确定删除 "' + memberNameInput.value + '"？')) return;
+  if (!confirm(t('member.delete.confirm', { name: memberNameInput.value }))) return;
   await window.pace.teamDelete(Number(memberIdInput.value));
   closeMemberModal();
   refreshAll();
@@ -1450,10 +1436,14 @@ document.addEventListener('keydown', (e) => {
 // --- Boot ---
 window.addEventListener('DOMContentLoaded', async () => {
   window.pace.log('panel', 'boot', { version: '0.1.0', form: 'feed-first-tabs' });
-  // Apply theme/font from saved settings BEFORE first paint of content
+  // Apply theme/font + load i18n strings BEFORE first paint of content
   try {
     const s0 = await window.pace.getSettings();
     applyAppearance(s0);
+    LANG = s0.language || 'zh-CN';
+    const r = await window.pace.getStrings(LANG);
+    if (r && r.strings) STRINGS = r.strings;
+    applyI18nToDom(document);
   } catch (_e) {}
   await refreshAll();
   // Start git fs watcher; receive events here for live refresh.

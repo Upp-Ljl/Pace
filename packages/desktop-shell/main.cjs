@@ -29,6 +29,7 @@ const mentorPipeline = require('./mentor-pipeline.cjs');
 const ccBridge = require('./cc-bridge.cjs');
 const { buildTrayPng } = require('./tray-icon.cjs');
 const { GitWatcher } = require('./git-watcher.cjs');
+const i18n = require('./i18n.cjs');
 
 const PANEL_WIDTHS = { slim: 420, regular: 460, wide: 520 };
 function resolveWinWidth() {
@@ -185,6 +186,11 @@ ipcMain.handle('pace:mentor-ask-stream', async (event, input) => {
 });
 
 // --- IPC: settings ---
+
+ipcMain.handle('pace:strings-get', async (_e, lang) => {
+  const l = (lang === 'en' || lang === 'zh-CN') ? lang : (config.getSettings().language || 'zh-CN');
+  return { lang: l, strings: i18n.flatStrings(l) };
+});
 
 ipcMain.handle('pace:settings-get', async () => config.getSettings());
 ipcMain.handle('pace:settings-save', async (_event, patch) => {

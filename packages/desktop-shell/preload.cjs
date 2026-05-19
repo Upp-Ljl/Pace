@@ -11,6 +11,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const api = {
+  getStrings:       (lang)   => ipcRenderer.invoke('pace:strings-get', lang || null),
   askMentor:        (input)  => ipcRenderer.invoke('pace:mentor-ask', input || {}),
   /**
    * Stream a mentor turn. onChunk receives:
