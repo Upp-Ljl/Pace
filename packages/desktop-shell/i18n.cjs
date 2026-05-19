@@ -234,6 +234,7 @@ const dict = {
   // ===== System / errors =====
   'err.no_key.md':             { 'zh-CN': '⚠️ **还没设置 MiniMax API key**\n\n点右上角 ⚙ 设置图标，粘贴 Base URL、API key、model。\n\n也可以设环境变量 `MINIMAX_API_KEY` / `MINIMAX_BASE_URL` / `MINIMAX_MODEL`。', en: '⚠️ **No MiniMax API key set**\n\nClick ⚙ at top-right, paste Base URL / API key / model.\n\nOr set env vars `MINIMAX_API_KEY` / `MINIMAX_BASE_URL` / `MINIMAX_MODEL`.' },
   'err.timeout.md':            { 'zh-CN': '⚠️ **LLM 调用超时**\n\n可能是网络不通或上游过载。稍后再试。', en: '⚠️ **LLM call timed out**\n\nNetwork issue or upstream busy. Try again shortly.' },
+  'err.stream_idle.md':        { 'zh-CN': '⚠️ **流式输出卡住了**\n\nMiniMax 在中途停止吐 token（连接没断但 30s 没动静）。已自动中止，可以直接重试同一个问题。', en: '⚠️ **Streaming stalled**\n\nMiniMax stopped emitting tokens mid-response (connection alive but idle 30s+). Auto-aborted; just retry the same question.' },
   'err.network.md':            { 'zh-CN': '⚠️ **网络出错**\n\n检查能否访问 MiniMax endpoint。', en: '⚠️ **Network error**\n\nCheck access to the MiniMax endpoint.' },
   'err.no_content.md':         { 'zh-CN': '⚠️ **LLM 没返回正文**\n\n可能是模型名错或 quota 用完。', en: '⚠️ **Empty LLM response**\n\nBad model name or quota exhausted.' },
   'err.generic.md':            { 'zh-CN': '⚠️ **LLM 调用失败**\n\nerror_code: `{code}`{model}', en: '⚠️ **LLM call failed**\n\nerror_code: `{code}`{model}' },

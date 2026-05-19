@@ -299,6 +299,7 @@ function errorMarkdown(code, model) {
     no_key: 'err.no_key.md',
     incomplete_config: 'err.no_key.md',
     timeout: 'err.timeout.md',
+    stream_idle: 'err.stream_idle.md',
     network: 'err.network.md',
     no_content: 'err.no_content.md',
     no_fetch:   'err.network.md',

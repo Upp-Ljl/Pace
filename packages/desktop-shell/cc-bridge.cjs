@@ -122,19 +122,35 @@ function listSessionFiles(projDir) {
   }
 }
 
-function readFirstJsonl(filePath, maxBytes) {
-  // Read the head of a session file just enough to find the first
-  // record (which carries cwd metadata in CC's session format).
-  const max = maxBytes || 4096;
+/**
+ * Scan up to the first N lines of a cc transcript and return the first
+ * record carrying a `cwd` field. cc transcripts start with metadata records
+ * (`permission-mode`, `file-history-snapshot`, ...) that have no `cwd`,
+ * then the first `user` message includes it. We can't assume "line 0".
+ *
+ * Returns the parsed record (with cwd) or null if no such record was
+ * found within the byte / line budget.
+ */
+function findCwdRecord(filePath, maxBytes, maxLines) {
+  const maxB = maxBytes || 32_768;
+  const maxL = maxLines || 30;
   try {
     const fd = fs.openSync(filePath, 'r');
     try {
-      const buf = Buffer.alloc(max);
-      const bytes = fs.readSync(fd, buf, 0, max, 0);
+      const buf = Buffer.alloc(maxB);
+      const bytes = fs.readSync(fd, buf, 0, maxB, 0);
       const head = buf.slice(0, bytes).toString('utf8');
-      const firstLine = head.split('\n').find((l) => l.trim().length > 0);
-      if (!firstLine) return null;
-      return JSON.parse(firstLine);
+      const lines = head.split('\n');
+      let scanned = 0;
+      for (const line of lines) {
+        if (!line || !line.trim()) continue;
+        if (scanned++ >= maxL) break;
+        let obj;
+        try { obj = JSON.parse(line); } catch (_e) { continue; }
+        const cwd = obj && (obj.cwd || (obj.session && obj.session.cwd));
+        if (typeof cwd === 'string' && cwd.length) return obj;
+      }
+      return null;
     } finally {
       fs.closeSync(fd);
     }
@@ -171,9 +187,9 @@ function findActiveCcSession(targetRoot) {
   let scanned = 0;
   for (const c of candidates) {
     if (scanned++ >= SESSION_FILES_MAX) break;
-    const first = readFirstJsonl(c.sf, 8192);
-    if (!first) continue;
-    const recordedCwd = first.cwd || (first.session && first.session.cwd);
+    const rec = findCwdRecord(c.sf, 32_768, 30);
+    if (!rec) continue;
+    const recordedCwd = rec.cwd || (rec.session && rec.session.cwd);
     if (typeof recordedCwd !== 'string') continue;
     const norm = path.normalize(recordedCwd).toLowerCase();
     if (norm === targetNorm || norm.startsWith(targetNorm + path.sep.toLowerCase())) {
@@ -182,8 +198,8 @@ function findActiveCcSession(targetRoot) {
         project_dir:    c.projDir,
         last_mtime_ms:  c.mtime,
         cwd_recorded:   recordedCwd,
-        session_id:     first.sessionId || first.session_id || null,
-        first_record_keys: Object.keys(first),
+        session_id:     rec.sessionId || rec.session_id || null,
+        first_record_keys: Object.keys(rec),
       };
     }
   }

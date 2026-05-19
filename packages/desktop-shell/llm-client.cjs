@@ -246,12 +246,25 @@ async function chatStream(payload, opts) {
     return { enabled: true, ok: false, model: provider.model, error_code: 'no_fetch' };
   }
   const timeoutMs = Number.isFinite(o.timeoutMs) ? o.timeoutMs : 90_000;
+  // Inactivity watchdog: provider may keep the TCP connection alive without
+  // sending tokens (observed with MiniMax on long-context tool-result turns).
+  // Reset on every delta chunk; abort if no chunk arrives for inactivityMs.
+  const inactivityMs = Number.isFinite(o.inactivityMs) ? o.inactivityMs : 30_000;
   const ac = new AbortController();
+  let idleAborted = false;
   if (o.signal) {
     if (o.signal.aborted) ac.abort();
     o.signal.addEventListener('abort', () => ac.abort());
   }
   const timer = setTimeout(() => ac.abort(), timeoutMs);
+  let lastActivity = Date.now();
+  const idlePollMs = Math.min(5_000, Math.max(1_000, Math.floor(inactivityMs / 4)));
+  const idleTimer = setInterval(() => {
+    if (Date.now() - lastActivity > inactivityMs) {
+      idleAborted = true;
+      try { ac.abort(); } catch (_e) {}
+    }
+  }, idlePollMs);
 
   let url = provider.baseUrl;
   if (!/\/chat\/completions(\?|$)/.test(url)) {
@@ -295,8 +308,9 @@ async function chatStream(payload, opts) {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      // Any bytes off the socket count as activity, even before they parse.
+      lastActivity = Date.now();
       lineBuffer += decoder.decode(value, { stream: true });
-      // Split by newline (SSE event terminator is \n\n but events are line-based)
       const lines = lineBuffer.split('\n');
       lineBuffer = lines.pop() || '';
 
@@ -311,6 +325,7 @@ async function chatStream(payload, opts) {
           const delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
           if (typeof delta === 'string' && delta.length) {
             accumulated += delta;
+            lastActivity = Date.now();
             if (o.onChunk) {
               try { o.onChunk({ type: 'delta', text: delta }); } catch (_e) {}
             }
@@ -326,11 +341,15 @@ async function chatStream(payload, opts) {
     };
   } catch (e) {
     if (e && e.name === 'AbortError') {
-      return { enabled: true, ok: false, model: provider.model, error_code: 'timeout' };
+      return {
+        enabled: true, ok: false, model: provider.model,
+        error_code: idleAborted ? 'stream_idle' : 'timeout',
+      };
     }
     return { enabled: true, ok: false, model: provider.model, error_code: 'network' };
   } finally {
     clearTimeout(timer);
+    clearInterval(idleTimer);
   }
 }
 
