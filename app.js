@@ -28,11 +28,11 @@
     },
     c: {
       tagline:
-        'Ship like a PM,<br><em>not like a code monkey.</em>',
+        'main 上裸改 3 小时后，<br><em>它问你一句话。</em>',
       sub:
-        '你已经会让 cc 写代码了。下一步是知道自己卡在 PMBOK 的哪个回合、该找谁解。',
-      cta: '↓ Get Pace · free & open source',
-      ctaFoot: '本地优先 · MIT 开源'
+        '不是提醒你建分支——是让你停一下：你现在在哪个回合、谁等着你的下游、要不要先同步。',
+      cta: '↓ Try Pace · 5 MB · 本地优先',
+      ctaFoot: '不传 cc 历史，不学你的 repo'
     },
     d: {
       tagline:
@@ -44,7 +44,7 @@
     }
   };
 
-  var DEFAULT_VARIANT = 'b';
+  var DEFAULT_VARIANT = 'c';
   var VALID = Object.keys(VARIANTS);
 
   function readHashVariant() {
