@@ -488,11 +488,18 @@ body {
   margin-top: 5px;
   padding-top: 5px;
   border-top: 1px dashed rgba(80, 90, 100, 0.30);
-  max-height: 200px;
+  max-height: 140px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
+  /* DeepSeek-style: older text fades out at the top so the eye is
+     drawn to the freshly-streamed line at the bottom. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 100%);
+          mask-image: linear-gradient(to bottom, transparent 0, #000 28px, #000 100%);
+  scrollbar-width: thin;
 }
+.thinking-body::-webkit-scrollbar { width: 4px; }
+.thinking-body::-webkit-scrollbar-thumb { background: rgba(111, 181, 176, 0.18); border-radius: 2px; }
 .tool-event {
   font-style: normal;
   font-family: var(--font);

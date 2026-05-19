@@ -871,7 +871,22 @@ async function streamMentorInto(parent, text, opts) {
         // Lock thinking summary
         ui.thinkLabel.textContent = t('stream.thinking_done');
         ui.thinking.classList.add('done');
-        // Remove typing placeholder cursor and start text node
+        // Collapse thinking box so the answer below is the focus
+        // (DeepSeek-style: thinking auto-folds when answer starts).
+        // User can click head to expand again.
+        if (thinkingChars > 0) {
+          ui.thinking.classList.add('collapsed');
+          ui.thinkHead.style.cursor = 'pointer';
+          if (!ui.thinkHead.dataset.toggleAttached) {
+            ui.thinkHead.addEventListener('click', () => {
+              ui.thinking.classList.toggle('collapsed');
+            });
+            ui.thinkHead.dataset.toggleAttached = '1';
+          }
+        } else {
+          ui.thinking.hidden = true;
+        }
+        // Switch cursor into the actual blinking caret
         ui.cursor.classList.add('blinking');
       }
       answerText += chunk.text;
@@ -893,15 +908,18 @@ async function streamMentorInto(parent, text, opts) {
       // Move rendered nodes into ui.answer
       while (md.firstChild) ui.answer.appendChild(md.firstChild);
       ui.answer.classList.add('done');
-      // Final thinking meta
+      // Final thinking meta (collapse may already be set from firstAnswerSeen)
       if (thinkingChars > 0) {
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
         ui.thinkMeta.textContent = ` · ${thinkingChars} 字 · ${elapsed}s`;
         ui.thinking.classList.add('collapsed');
         ui.thinkHead.style.cursor = 'pointer';
-        ui.thinkHead.addEventListener('click', () => {
-          ui.thinking.classList.toggle('collapsed');
-        });
+        if (!ui.thinkHead.dataset.toggleAttached) {
+          ui.thinkHead.addEventListener('click', () => {
+            ui.thinking.classList.toggle('collapsed');
+          });
+          ui.thinkHead.dataset.toggleAttached = '1';
+        }
       } else {
         ui.thinking.hidden = true;
       }
