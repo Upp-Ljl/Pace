@@ -1131,36 +1131,149 @@ body {
 }
 #as-member-banner .clear-as-member:hover { color: var(--accent); border-color: var(--accent); }
 
-/* Light theme overrides */
+/* ============================================================
+   LIGHT THEME — full override (solid surfaces so wallpaper doesn't
+   bleed through and the dark hardcoded rgba splotches get replaced)
+   ============================================================ */
 html[data-pace-theme="light"] {
-  --bg-base:      rgba(245, 243, 240, 0.85);
-  --bg-surface:   rgba(252, 250, 247, 0.85);
-  --bg-elevated:  rgba(255, 254, 252, 0.92);
-  --bg-card:      rgba(255, 253, 250, 0.70);
-  --border:       rgba(176, 165, 152, 0.35);
-  --border-focus: rgba(78, 130, 126, 0.50);
+  --bg-base:      #f5f3f0;
+  --bg-surface:   #fcfaf7;
+  --bg-elevated:  #fefdfb;
+  --bg-card:      #fefcf8;
+  --border:       rgba(176, 165, 152, 0.45);
+  --border-focus: rgba(78, 130, 126, 0.55);
 
-  --text-primary:   #2a2825;
-  --text-secondary: #5a5550;
-  --text-muted:     #837d75;
-  --text-faint:     #b3aca3;
+  --text-primary:   #1f1d1a;
+  --text-secondary: #4a4540;
+  --text-muted:     #6f6960;
+  --text-faint:     #a59f95;
 
   --accent:       #4e827e;
   --accent-muted: #6fb5b0;
   --accent-bg:    rgba(78, 130, 126, 0.10);
+  --accent-hover-bg: rgba(78, 130, 126, 0.18);
   --on-accent:    #fafaf7;
 
-  --user-bg:      rgba(176, 137, 104, 0.18);
+  --user-bg:      rgba(176, 137, 104, 0.16);
   --user-border:  rgba(150, 110, 70, 0.55);
+
+  --alert: #b8392f;
+  --warn:  #b08036;
+  --ok:    #4e827e;
 }
 html[data-pace-theme="light"] body {
-  background: transparent;
+  background: #f5f3f0;
+  border-left: 1px solid rgba(176, 165, 152, 0.55);
 }
 html[data-pace-theme="light"] #app {
-  background: linear-gradient(180deg,
-    rgba(252, 250, 247, 0.70) 0%,
-    rgba(245, 243, 240, 0.80) 50%,
-    rgba(252, 250, 247, 0.70) 100%);
+  background: #f5f3f0;
+}
+/* Header / meta / tabs */
+html[data-pace-theme="light"] #header {
+  background: rgba(252, 250, 247, 0.92);
+  border-bottom: 1px solid var(--border);
+}
+html[data-pace-theme="light"] #tabs {
+  background: rgba(252, 250, 247, 0.50);
+}
+/* Commit pane bits */
+html[data-pace-theme="light"] .commit-digest {
+  background: rgba(78, 130, 126, 0.05);
+  border-left: 2px solid var(--accent-muted);
+}
+html[data-pace-theme="light"] .commit-tag {
+  background: rgba(78, 130, 126, 0.06);
+  border-color: rgba(176, 165, 152, 0.45);
+  color: var(--text-secondary);
+}
+/* Status bar / detail panel / hero */
+html[data-pace-theme="light"] #status-bar {
+  background: rgba(252, 250, 247, 0.75);
+}
+html[data-pace-theme="light"] #detail-panel {
+  background: rgba(252, 250, 247, 0.95);
+}
+html[data-pace-theme="light"] #now-hero {
+  background: rgba(252, 250, 247, 0.75);
+  border-bottom: 1px solid var(--border);
+}
+/* Streaming bubble — thinking section */
+html[data-pace-theme="light"] .msg-thinking {
+  background: rgba(252, 250, 247, 0.85);
+  border: 1px solid var(--border);
+}
+/* Input bar + footer */
+html[data-pace-theme="light"] #input-bar {
+  background: rgba(252, 250, 247, 0.92);
+  border-top: 1px solid var(--border);
+}
+html[data-pace-theme="light"] #input {
+  background: #ffffff;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+html[data-pace-theme="light"] #footer {
+  background: rgba(252, 250, 247, 0.85);
+  border-top: 1px solid var(--border);
+}
+/* Ask context strip + suggestions */
+html[data-pace-theme="light"] #ask-context {
+  background: rgba(252, 250, 247, 0.75);
+  border-bottom: 1px solid var(--border);
+}
+html[data-pace-theme="light"] #as-member-banner {
+  background: rgba(78, 130, 126, 0.10);
+  border-bottom: 1px solid var(--accent-muted);
+}
+/* Modal */
+html[data-pace-theme="light"] .modal {
+  background: #fefdfb;
+  border: 1px solid var(--border-focus);
+  box-shadow: 0 12px 36px rgba(50, 40, 30, 0.18);
+}
+html[data-pace-theme="light"] .modal input[type="password"],
+html[data-pace-theme="light"] .modal input[type="text"],
+html[data-pace-theme="light"] .modal select {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+html[data-pace-theme="light"] .modal .status-row {
+  background: rgba(252, 250, 247, 0.85);
+  border: 1px solid var(--border);
+}
+html[data-pace-theme="light"] .seg-control {
+  background: rgba(252, 250, 247, 0.85);
+  border: 1px solid var(--border);
+}
+html[data-pace-theme="light"] .modal-backdrop {
+  background: rgba(50, 40, 30, 0.40);
+}
+/* Cards + card-reply */
+html[data-pace-theme="light"] .card .card-reply {
+  background: rgba(252, 250, 247, 0.65);
+}
+/* Member chat button + team toolbar */
+html[data-pace-theme="light"] #team-toolbar {
+  background: rgba(252, 250, 247, 0.50);
+}
+/* msg.mentor + .streaming breathing pulse — soften for light */
+html[data-pace-theme="light"] .msg.mentor.streaming {
+  border-left: 2px solid var(--accent);
+}
+/* Scrollbar */
+html[data-pace-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(140, 130, 115, 0.30);
+}
+html[data-pace-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 130, 115, 0.50);
+}
+/* Brand subtitle remains readable on light */
+html[data-pace-theme="light"] #brand { color: var(--text-primary); }
+html[data-pace-theme="light"] #brand small { color: var(--text-muted); }
+/* Inline code in mentor bubble — keep accent but ensure readable bg */
+html[data-pace-theme="light"] .msg.mentor code {
+  background: rgba(78, 130, 126, 0.10);
 }
 
 /* Font-size root overrides */
