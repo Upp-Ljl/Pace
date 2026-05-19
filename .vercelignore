@@ -31,3 +31,10 @@ Thumbs.db
 # Logs / temp
 *.log
 .tmp/
+
+# Demo video + BGM artifacts (kept in repo, not served from landing)
+*.mp4
+*.mp3
+docs/bgm-candidates/
+docs/
+.shots/

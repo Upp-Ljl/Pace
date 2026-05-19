@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pace — 它读你工作，才敢开口</title>
+    <title>Pace — 它问你一句话</title>
     <meta
       name="description"
-      content="Pace 是给重度使用 Claude Code 的职场人的 PMP-style mentor。不是 task tracker，不是 chat 替代品——读你今天真实改过的代码和 transcript，告诉你阶段、下一步、找谁怎么说。"
+      content="main 上裸改 3 小时后，它问你一句话。Pace 是给重度使用 cc 的人的桌面 mentor——读你今天真实改过的代码和对话，告诉你下一步找谁、话怎么开。"
     />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500;1,8..60,600&display=swap"
       rel="stylesheet"
     />
 
@@ -21,462 +21,208 @@
   <body>
     <a class="skip-link" href="#main">跳到正文</a>
 
-    <header class="site-header" id="top">
-      <div class="container header-row">
-        <a class="brand" href="#top">
-          <span class="brand-mark">✦</span>
-          <span class="brand-name">Pace</span>
-        </a>
-        <nav class="site-nav" aria-label="主导航">
-          <a href="#read">docs</a>
-          <a href="https://github.com/Upp-Ljl/Pace" rel="noopener">github</a>
-          <a class="nav-cta" href="#install">download</a>
-        </nav>
-      </div>
-    </header>
-
     <main id="main">
-      <!-- ================== 屏 1 — Hero ================== -->
-      <section class="hero" aria-labelledby="hero-tagline">
-        <div class="container">
-          <p class="tagline-hint">⓵ Tagline 评估模式 · 点击切换看效果</p>
+      <!-- ============================================================
+           BEAT 1 — Hero · 黑底大字宣言 + 紫光 blast
+           ============================================================ -->
+      <section class="beat beat-1" aria-labelledby="hero-tagline">
+        <header class="beat-1-nav" aria-label="导航">
+          <a class="brand" href="#top">
+            <span class="brand-mark">✦</span>
+            <span class="brand-name">Pace</span>
+          </a>
+          <nav class="site-nav" aria-label="主导航">
+            <a href="#install">install</a>
+            <a href="https://github.com/Upp-Ljl/Pace" rel="noopener">github</a>
+          </nav>
+        </header>
 
-          <div
-            class="tagline-toggle"
-            role="tablist"
-            aria-label="4 个 hero tagline 候选"
-          >
-            <button
-              type="button"
-              role="tab"
-              class="tagline-btn"
-              data-variant="a"
-              id="tab-a"
-              aria-controls="hero-content"
-            >
-              反 task tracker
-            </button>
-            <button
-              type="button"
-              role="tab"
-              class="tagline-btn"
-              data-variant="b"
-              id="tab-b"
-              aria-controls="hero-content"
-            >
-              视角排练
-            </button>
-            <button
-              type="button"
-              role="tab"
-              class="tagline-btn is-active"
-              data-variant="c"
-              id="tab-c"
-              aria-controls="hero-content"
-              aria-selected="true"
-            >
-              main 裸改
-            </button>
-            <button
-              type="button"
-              role="tab"
-              class="tagline-btn"
-              data-variant="d"
-              id="tab-d"
-              aria-controls="hero-content"
-            >
-              mentor 翻你的活
-            </button>
-          </div>
+        <div class="beat-1-stage">
+          <h1 class="manifesto" id="hero-tagline">
+            <span class="manifesto-text" id="hero-text">
+              <span class="m-line">main 上裸改 3 小时后，</span><span class="m-line m-line-emph"><em>它问你一句话。</em><span class="spark" aria-hidden="true"></span></span>
+            </span>
+          </h1>
 
-          <div class="hero-grid" id="hero-content">
-            <div class="hero-copy">
-              <h1 class="hero-tagline" id="hero-tagline">
-                main 上裸改 3 小时后，<br /><em>它问你一句话。</em>
-              </h1>
-              <p class="hero-sub" id="hero-sub">
-                不是提醒你建分支——是让你停一下：你现在在哪个回合、谁等着你的下游、要不要先同步。
-              </p>
-              <div class="hero-cta-row">
-                <a class="btn btn-primary" id="hero-cta" href="#install">
-                  ↓ Try Pace · 5 MB · 本地优先
-                </a>
-                <span class="hero-cta-foot" id="hero-cta-foot"
-                  >不传 cc 历史，不学你的 repo</span
-                >
-              </div>
-            </div>
-
-            <!-- Hero 截图占位（4 方案共用同一张静态合成图） -->
-            <div class="hero-shot" aria-hidden="true">
-              <div class="shot-frame">
-                <!-- 后景 1：git commit -->
-                <div class="shot-bg-commit">
-                  <span class="dot dot-green"></span>
-                  <span class="mono"
-                    >feat: streaming output + thinking animation</span
-                  >
-                  <span class="mono mono-muted">· 4ae4781</span>
-                </div>
-
-                <!-- 后景 2：cc terminal -->
-                <div class="shot-bg-cc">
-                  <span class="mono mono-muted"
-                    >~/.claude/projects/D--lll-pace/&lt;sid&gt;.jsonl</span
-                  >
-                  <br />
-                  <span class="mono mono-faint"
-                    >&gt; type=user  content=&quot;我现在在干啥&quot;</span
-                  ><br />
-                  <span class="mono mono-faint"
-                    >&gt; cwd=&quot;D:\\lll\\pace&quot;</span
-                  >
-                </div>
-
-                <!-- 前景：Pace panel -->
-                <div class="shot-panel">
-                  <div class="shot-panel-tabs">
-                    <span class="shot-tab is-active">现在</span>
-                    <span class="shot-tab">问问</span>
-                    <span class="shot-tab">团队</span>
-                    <span class="shot-tab">提交</span>
-                  </div>
-
-                  <div class="shot-card">
-                    <div class="shot-card-head">
-                      <span class="shot-card-pin">✦</span>
-                      <span class="shot-card-title mono"
-                        >feat: streaming output + thinking animation</span
-                      >
-                    </div>
-                    <p class="shot-card-stage">
-                      <em>Planning · Scope Definition · 72%</em>
-                    </p>
-                    <p class="shot-card-body">
-                      先和后端 owner 对齐 API contract，再进 Executing 阶段——再写一周就是返工。
-                    </p>
-                    <div class="shot-card-chips">
-                      <span class="shot-chip">cc 8 轮</span>
-                      <span class="shot-chip">3 commits</span>
-                      <span class="shot-chip">RACI 2 人</span>
-                    </div>
-                  </div>
-
-                  <div class="shot-thinking">
-                    <span class="shot-thinking-label">思考 140 字 · 29s ▾</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ================== 屏 2 — 它怎么读懂你 ================== -->
-      <section class="section section-read" id="read" aria-labelledby="s2-title">
-        <div class="container">
-          <header class="section-head">
-            <h2 id="s2-title" class="section-title">它读什么，才敢开口。</h2>
-            <p class="section-sub">
-              不是问你「今天感觉怎么样」，是先翻你三张表。
-            </p>
-          </header>
-
-          <div class="signal-flow">
-            <div class="signal-chips">
-              <article class="signal-chip">
-                <h3 class="signal-name">cc 最近 N 轮</h3>
-                <p class="signal-detail">「你和它讨论了 API。」</p>
-                <p class="signal-meta">transcript jsonl · 按需读取</p>
-              </article>
-
-              <span class="signal-arrow" aria-hidden="true">→</span>
-
-              <article class="signal-chip">
-                <h3 class="signal-name">git 提交 + diff</h3>
-                <p class="signal-detail">「本周改了 12 个文件。」</p>
-                <p class="signal-meta">本地 git log · 不传服务端</p>
-              </article>
-
-              <span class="signal-arrow" aria-hidden="true">→</span>
-
-              <article class="signal-chip">
-                <h3 class="signal-name">团队 RACI + 视角</h3>
-                <p class="signal-detail">「王后端应该已经在期待你。」</p>
-                <p class="signal-meta">~/.pace/team.json · 你写你删</p>
-              </article>
-            </div>
-
-            <div class="signal-down" aria-hidden="true">↓</div>
-
-            <div class="signal-mentor">
-              <p class="signal-mentor-head">Pace mentor</p>
-              <p class="signal-mentor-sub">PMP × 你的证据</p>
-            </div>
-
-            <div class="signal-down" aria-hidden="true">↓</div>
-
-            <blockquote class="signal-output">
-              <p>
-                你在 <em>Planning · Scope Definition</em>，已花了 <strong>72%</strong>
-                时间在 API 设计。再不和王后端对齐就要进 Executing 阶段返工。
-              </p>
-              <p>
-                给你一段开口话术：「王哥，我这一周一直在写 export 这块的 API，发现
-                error code 的语义你那边可能比我清楚——抽你 15 分钟，对一下 contract，
-                我再继续写。」
-              </p>
-            </blockquote>
-          </div>
-
-          <p class="section-foot">
-            按需读取 · 不后台常驻 · 不上传任何字节
+          <p class="manifesto-sub" id="hero-sub">
+            不是提醒你建分支——是让你停一下：你在哪个回合、谁等着你的下游、要不要先同步。
           </p>
         </div>
+
+        <div
+          class="tagline-toggle"
+          role="tablist"
+          aria-label="4 个 tagline 候选"
+        >
+          <button type="button" role="tab" class="tagline-btn" data-variant="a" id="tab-a" aria-controls="hero-tagline">
+            反 task tracker
+          </button>
+          <button type="button" role="tab" class="tagline-btn" data-variant="b" id="tab-b" aria-controls="hero-tagline">
+            视角排练
+          </button>
+          <button type="button" role="tab" class="tagline-btn is-active" data-variant="c" id="tab-c" aria-controls="hero-tagline" aria-selected="true">
+            main 裸改
+          </button>
+          <button type="button" role="tab" class="tagline-btn" data-variant="d" id="tab-d" aria-controls="hero-tagline">
+            mentor 翻你的活
+          </button>
+        </div>
+
+        <p class="beat-1-credit">本地优先 · 你的电脑</p>
       </section>
 
-      <!-- ================== 屏 3 — Task tracker 救不了你 ================== -->
-      <section
-        class="section section-anti"
-        aria-labelledby="s3-title"
-      >
-        <div class="container">
-          <header class="section-head section-head-anti">
-            <h2 id="s3-title" class="section-title section-title-anti">
-              Task tracker 救不了你。
-            </h2>
-            <p class="section-sub">
-              你不缺一行待办，你缺一个先看完证据再说话的人。
-            </p>
-          </header>
+      <!-- ============================================================
+           BEAT 2 — prompt 落进 input（伪交互）
+           ============================================================ -->
+      <section class="beat beat-2" aria-labelledby="b2-title">
+        <p class="eyebrow">02 · 它在看你跟 cc 说了啥</p>
+        <h2 class="beat-2-title" id="b2-title">
+          先翻你今天的对话，<br /><em>再开口。</em>
+        </h2>
 
-          <p class="anti-prefix">Pace 不是：</p>
-
-          <ul class="anti-grid">
-            <li class="anti-card">
-              <span class="anti-x" aria-hidden="true">╳</span>
-              <h3 class="anti-title">task tracker / Jira / Linear / 看板 / 甘特图</h3>
-              <p class="anti-body">没有 due date，没有燃尽图，没有 owner 列。</p>
-            </li>
-            <li class="anti-card">
-              <span class="anti-x" aria-hidden="true">╳</span>
-              <h3 class="anti-title">ChatGPT 聊天替代品</h3>
-              <p class="anti-body">
-                不闲聊，每次回答都基于你今天真实改过的代码和 transcript。
-              </p>
-            </li>
-            <li class="anti-card">
-              <span class="anti-x" aria-hidden="true">╳</span>
-              <h3 class="anti-title">IDE 插件 / cc sidebar</h3>
-              <p class="anti-body">
-                独立 desktop dock，不抢 cc 上下文，不和 editor 抢焦点。
-              </p>
-            </li>
-            <li class="anti-card">
-              <span class="anti-x" aria-hidden="true">╳</span>
-              <h3 class="anti-title">multi-agent 编排内核</h3>
-              <p class="anti-body">
-                不 spawn cc 子进程，不替你跑任务。它读你，不替你做。
-              </p>
-            </li>
-            <li class="anti-card">
-              <span class="anti-x" aria-hidden="true">╳</span>
-              <h3 class="anti-title">给程序员的工具</h3>
-              <p class="anti-body">
-                给所有重度用 cc 的人：PM / 设计 / 运营 / HR / 创业者。程序员只是其中一种。
-              </p>
-            </li>
-            <li class="anti-card">
-              <span class="anti-x" aria-hidden="true">╳</span>
-              <h3 class="anti-title">替你做决策的 boss</h3>
-              <p class="anti-body">
-                mentor 引导，不下命令。它给阶段判断和选项，按哪个键是你的事。
-              </p>
-            </li>
-          </ul>
-
-          <p class="anti-foot">
-            它做一件事：每次你开口，给你一段读完你工作的 mentor 回答——
-            <strong>阶段判断 + 下一步 + 找谁怎么说</strong>。
+        <div class="prompt-stage">
+          <p class="floating-prompt" data-anim="floatIn">
+            「我刚改了 IPC race bug，下一步该干啥？」
           </p>
+
+          <div class="prompt-arrow" aria-hidden="true">↓</div>
+
+          <div class="prompt-input" data-anim="inputGlow">
+            <span class="prompt-dot"></span>
+            <span class="prompt-input-text" id="prompt-typed"></span>
+            <span class="prompt-caret"></span>
+          </div>
+
+          <div class="prompt-meta">
+            <span class="prompt-meta-tag">
+              <span class="prompt-meta-key">在看你</span>
+              <span class="prompt-meta-val mono">~/projects/pace</span>
+            </span>
+            <span class="prompt-meta-tag">
+              <span class="prompt-meta-key">翻过</span>
+              <span class="prompt-meta-val mono">5 commits · 47 行 diff</span>
+            </span>
+            <span class="prompt-meta-tag">
+              <span class="prompt-meta-key">读过</span>
+              <span class="prompt-meta-val mono">cc 8 轮对话</span>
+            </span>
+            <span class="prompt-meta-tag">
+              <span class="prompt-meta-key">才开口</span>
+              <span class="prompt-meta-val mono">29 秒</span>
+            </span>
+          </div>
         </div>
+
+        <p class="beat-2-credit">不上传任何字节 · 只在你电脑里</p>
       </section>
 
-      <!-- ================== 屏 4 — 3 wow moments ================== -->
-      <section class="section section-wow" aria-labelledby="s4-title">
-        <div class="container">
-          <header class="section-head">
-            <h2 id="s4-title" class="section-title">
-              三个让人「噢，原来 mentor 该长这样」的瞬间。
-            </h2>
-            <p class="section-sub">不是 3 分钟视频，3 张静态图就够。</p>
-          </header>
+      <!-- ============================================================
+           BEAT 3 — 反定义：3 行删除线 + 紫色替换
+           ============================================================ -->
+      <section class="beat beat-3" aria-labelledby="b3-title">
+        <p class="eyebrow eyebrow-anti">03 · 反定义</p>
+        <h2 class="beat-3-title" id="b3-title">
+          它<em>不是—</em>
+        </h2>
 
-          <ol class="wow-grid">
-            <li class="wow-card">
-              <div class="wow-shot" aria-hidden="true">
-                <div class="wow-shot-frame">
-                  <div class="shot-panel-tabs">
-                    <span class="shot-tab is-active">现在</span>
-                    <span class="shot-tab">问问</span>
-                    <span class="shot-tab">团队</span>
-                  </div>
-                  <div class="shot-card shot-card-inline">
-                    <div class="shot-card-head">
-                      <span class="shot-card-pin">✦</span>
-                      <span class="shot-card-title mono"
-                        >feat: streaming output + thinking animation</span
-                      >
-                    </div>
-                    <p class="shot-card-stage">
-                      <em>Planning · Scope Definition · 72%</em>
-                    </p>
-                    <p class="shot-card-body">
-                      先和后端 owner 对齐 API contract。
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <p class="wow-index">01</p>
-              <h3 class="wow-title">不用问，feed 先开口</h3>
-              <p class="wow-body">
-                你推的每个 commit，Pace 自动给出 PMP 阶段标签和下一步话术。<strong>不用问。</strong>
-              </p>
-            </li>
-
-            <li class="wow-card">
-              <div class="wow-shot" aria-hidden="true">
-                <div class="wow-shot-frame">
-                  <div class="shot-thinking shot-thinking-wide">
-                    <span class="shot-thinking-label"
-                      >思考 140 字 · 29s ▾</span
-                    >
-                  </div>
-                  <div class="shot-bubble">
-                    <p class="shot-bubble-text">
-                      你早上推的 3 个 commit 在 Planning 阶段——先和王后端把 API 对一遍。
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <p class="wow-index">02</p>
-              <h3 class="wow-title">思考像 DeepSeek，正文一来就让位</h3>
-              <p class="wow-body">
-                思考字流一上来，框就缩。正文是主角，思考是配菜——一行 header 留给你回看。
-              </p>
-            </li>
-
-            <li class="wow-card">
-              <div class="wow-shot" aria-hidden="true">
-                <div class="wow-shot-frame">
-                  <div class="shot-panel-tabs">
-                    <span class="shot-tab">现在</span>
-                    <span class="shot-tab is-active">问问</span>
-                    <span class="shot-tab">团队</span>
-                  </div>
-                  <div class="shot-banner">
-                    <span class="shot-banner-text">
-                      以 <em>王后端</em> 的视角和你对话
-                    </span>
-                    <span class="shot-banner-exit">[退出 ta 的视角]</span>
-                  </div>
-                  <div class="shot-bubble shot-bubble-them">
-                    <p class="shot-bubble-text">
-                      这个 API 的 error code 你定了几种？前端拿 401 跟 403 还分得清吗？
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <p class="wow-index">03</p>
-              <h3 class="wow-title">切到 ta 的视角，把话先说一遍</h3>
-              <p class="wow-body">
-                见面前切到 ta 的视角，让 mentor 用 ta 的口气问你一遍——上桌前先排练完。
-              </p>
-            </li>
-          </ol>
-        </div>
+        <ul class="anti-rows">
+          <li class="anti-row">
+            <span class="anti-strike">不是 task tracker / Jira / Linear / 看板</span>
+            <span class="anti-arrow" aria-hidden="true">→</span>
+            <span class="anti-replace">它<em>看</em>你今天已经做了什么</span>
+          </li>
+          <li class="anti-row">
+            <span class="anti-strike">不是 ChatGPT 替代品</span>
+            <span class="anti-arrow" aria-hidden="true">→</span>
+            <span class="anti-replace">每一句都基于你今天<em>真实改过</em>的代码</span>
+          </li>
+          <li class="anti-row">
+            <span class="anti-strike">不是 IDE 插件 / cc sidebar</span>
+            <span class="anti-arrow" aria-hidden="true">→</span>
+            <span class="anti-replace">独立 <em>桌面 dock</em>，关上窗就消失</span>
+          </li>
+        </ul>
       </section>
 
-      <!-- ================== 屏 5 — 5 锁死决策 + install ================== -->
-      <section class="section section-promise" aria-labelledby="s5-title">
-        <div class="container">
-          <header class="section-head">
-            <h2 id="s5-title" class="section-title">
-              这是它的红线，也是它的承诺。
-            </h2>
-          </header>
+      <!-- ============================================================
+           BEAT 4 — mentor 输出三件套（黑底反差屏）
+           ============================================================ -->
+      <section class="beat beat-4" aria-labelledby="b4-title">
+        <p class="eyebrow eyebrow-dark">04 · 它开口时长这样</p>
+        <h2 class="beat-4-title" id="b4-title">
+          不是问你今天怎么样，<br /><em>是先翻完证据再说话。</em>
+        </h2>
 
-          <ul class="promise-grid">
-            <li class="promise-card">
-              <h3 class="promise-title">本地优先</h3>
-              <p class="promise-body">
-                你的 transcript 不进任何服务器，包括我们的。索引、缓存、配置全在
-                <code class="inline-mono">~/.pace/</code>，你随时能
-                <code class="inline-mono">rm -rf</code>。
-              </p>
-            </li>
-            <li class="promise-card">
-              <h3 class="promise-title">你的 key</h3>
-              <p class="promise-body">
-                自带 Anthropic / OpenAI / MiniMax key。Pace 不卖 token，不抽分成，不预留 SaaS 路径。
-              </p>
-            </li>
-            <li class="promise-card">
-              <h3 class="promise-title">被动应答</h3>
-              <p class="promise-body">
-                不弹窗、不通知、不周一早上提醒你。你开口它才说话，关上窗就消失。
-              </p>
-            </li>
-            <li class="promise-card">
-              <h3 class="promise-title">桌面 dock</h3>
-              <p class="promise-body">
-                独立 app（Electron），不是 IDE 插件，不抢 cc 焦点。锁屏快捷键召唤，写完答案缩回 dock。
-              </p>
-            </li>
-            <li class="promise-card">
-              <h3 class="promise-title">MIT 开源</h3>
-              <p class="promise-body">
-                代码全在 GitHub，issue 自己提，fork 自己改。坏话也可以骂在 PR 里。
-              </p>
-            </li>
-          </ul>
+        <article class="mentor-bubble">
+          <div class="mentor-rail" aria-hidden="true"></div>
 
-          <div class="install" id="install">
-            <h3 class="install-title">现在就上手</h3>
+          <div class="mentor-line mentor-line-1">
+            <span class="mentor-lead">阶段</span>
+            <p class="mentor-body">你这周在做<em>收尾活</em>。</p>
+          </div>
 
-            <div class="install-buttons">
-              <a class="btn btn-primary" href="https://github.com/Upp-Ljl/Pace/releases">
-                ↓ Download for macOS · Apple Silicon
-              </a>
-              <a class="btn btn-primary" href="https://github.com/Upp-Ljl/Pace/releases">
-                ↓ Download for Windows · x64
-              </a>
-            </div>
+          <div class="mentor-line mentor-line-2">
+            <span class="mentor-lead">找谁</span>
+            <p class="mentor-body">这事得 <em>Tom</em> 点头。</p>
+          </div>
 
-            <p class="install-or">or:</p>
+          <div class="mentor-line mentor-line-3">
+            <span class="mentor-lead">话怎么开</span>
+            <p class="mentor-body">
+              「Tom，我这周一直在收 export 这块的尾，error code 的语义你那边比我清楚——抽你 15 分钟对一下，我再封 PR。」
+            </p>
+          </div>
 
-            <pre class="install-code"><code>$ git clone https://github.com/Upp-Ljl/Pace
+          <footer class="mentor-foot">
+            <span class="mentor-foot-pulse"></span>
+            <span class="mentor-foot-text mono">基于你今天 5 个 commit · 8 轮 cc 对话</span>
+          </footer>
+        </article>
+
+        <p class="beat-4-credit">Tom · 这事得他点头</p>
+      </section>
+
+      <!-- ============================================================
+           BEAT 5 — 4 行肯定句 + install + footer
+           ============================================================ -->
+      <section class="beat beat-5" id="install" aria-labelledby="b5-title">
+        <h2 class="affirm" id="b5-title">
+          <span class="affirm-line affirm-1">它是 mentor。</span>
+          <span class="affirm-line affirm-2">它读你的 cc。</span>
+          <span class="affirm-line affirm-3">它在你电脑里。</span>
+          <span class="affirm-line affirm-4">它告诉你下一步找谁、话怎么开。</span>
+        </h2>
+
+        <div class="install-block">
+          <div class="install-buttons">
+            <a class="btn btn-primary" href="https://github.com/Upp-Ljl/Pace/releases">
+              ↓ Download · macOS
+            </a>
+            <a class="btn btn-primary" href="https://github.com/Upp-Ljl/Pace/releases">
+              ↓ Download · Windows
+            </a>
+          </div>
+
+          <p class="install-or">or:</p>
+
+          <pre class="install-code"><code>$ git clone https://github.com/Upp-Ljl/Pace
 $ cd Pace/packages/desktop-shell &amp;&amp; npm i
 $ npm run start</code></pre>
-          </div>
+
+          <p class="install-credit">
+            <span class="dot dot-purple"></span>
+            自带 LLM key · 不传任何字节 · MIT 开源
+          </p>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div class="container footer-inner">
-        <p class="footer-line">
-          Pace · MIT · made with cc · <span class="footer-mark">✦</span> in Beijing
-        </p>
-        <nav class="footer-nav" aria-label="footer 链接">
-          <a href="https://github.com/Upp-Ljl/Pace">github</a>
-          <a href="#read">docs</a>
-          <a href="#hero-tagline">about</a>
-          <a href="https://github.com/Upp-Ljl/Pace/commits/main">changelog</a>
-          <a href="https://x.com">x.com</a>
-          <a href="mailto:witkowskiloeser@gmail.com">contact</a>
-        </nav>
-      </div>
+      <p class="footer-line mono">
+        Pace · MIT · made with cc · ✦ in Beijing ·
+        <a href="https://github.com/Upp-Ljl/Pace">github</a> ·
+        <a href="mailto:witkowskiloeser@gmail.com">contact</a>
+      </p>
     </footer>
 
     <script src="./app.js" defer></script>
