@@ -840,14 +840,11 @@ pre {
 }
 
 .wow-shot {
-  background: var(--shot-bg);
-  border-radius: var(--r-shot);
-  border: 4px solid var(--bg-base);
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 0 0 6px var(--accent-soft),
-    0 18px 36px -16px rgba(75, 51, 184, 0.3);
-  padding: 18px;
+  /* Container only — the inner .mockui-wow carries its own dark frame,
+     border, glow and padding. Keep wrapper transparent to avoid double
+     framing now that PNG screenshots are gone. */
+  background: transparent;
+  padding: 0;
   color: var(--shot-fg);
   min-height: 240px;
   display: flex;
@@ -1108,42 +1105,549 @@ pre {
   }
 }
 
-/* ===== Wow real screenshots (replaces .wow-shot-frame CSS mocks) ===== */
-.wow-real-shot {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 14px;
-  border: 3px solid var(--bg-base);
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 0 0 8px var(--accent-soft),
-    0 16px 36px -12px rgba(75, 51, 184, 0.30),
-    0 6px 16px -6px rgba(27, 26, 34, 0.16);
+/* ====================================================
+ * Mock UI v2 — CSS-only mocks (replaces .hero-real-shot
+ * and .wow-real-shot PNG screenshots). Dark Pace panel
+ * embedded in the light landing page. Wider/shorter than
+ * the real 580x900 dock so it sits cleanly in hero/wow.
+ * ==================================================== */
+.mockui {
+  position: relative;
   background: var(--shot-bg);
-  /* Crop to top so the panel header + first card is the focus */
-  max-height: 360px;
-  object-fit: cover;
-  object-position: top center;
-}
-
-/* ===== Hero real screenshot (replaces .shot-frame CSS mock) ===== */
-/* Inherits the same purple-glow framing as .shot-frame above so the
-   hero card composition reads identically; just swaps the CSS-mocked
-   panel for a real Electron capturePage() PNG. */
-.hero-real-shot {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-width: 580px;
+  color: var(--shot-fg);
   border-radius: var(--r-shot);
   border: 4px solid var(--bg-base);
   box-shadow:
     0 0 0 1px var(--border),
     0 0 0 12px var(--accent-soft),
-    0 30px 60px -20px rgba(75, 51, 184, 0.35),
-    0 12px 30px -10px rgba(27, 26, 34, 0.18);
+    0 24px 48px -18px rgba(75, 51, 184, 0.32),
+    0 8px 22px -8px rgba(27, 26, 34, 0.18);
+  padding: 18px 18px 16px;
+  font-family: var(--ff-sans);
+  overflow: hidden;
 }
+
+.mockui::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    120% 80% at 90% 0%,
+    rgba(107, 79, 224, 0.16),
+    transparent 60%
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.mockui > * {
+  position: relative;
+  z-index: 1;
+}
+
+.mockui-hero {
+  width: 100%;
+  max-width: 480px;
+  margin-left: auto;
+}
+
+.mockui-wow {
+  width: 100%;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 0 0 6px var(--accent-soft),
+    0 16px 32px -14px rgba(75, 51, 184, 0.3),
+    0 6px 16px -6px rgba(27, 26, 34, 0.16);
+  border-width: 3px;
+  padding: 14px;
+}
+
+/* ---- header / meta / tabs (shared) ---- */
+.mockui-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.mockui-header-sm {
+  margin-bottom: 4px;
+}
+
+.mockui-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.mockui-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4cd082;
+  box-shadow: 0 0 6px rgba(76, 208, 130, 0.55);
+  display: inline-block;
+}
+
+.mockui-brand-name {
+  font-family: var(--ff-sans);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--shot-fg);
+  letter-spacing: -0.005em;
+}
+
+.mockui-brand-sub {
+  font-family: var(--ff-sans);
+  font-size: 11.5px;
+  color: var(--shot-fg-dim);
+  margin-left: 4px;
+}
+
+.mockui-gear {
+  font-size: 12px;
+  color: var(--shot-fg-dim);
+  opacity: 0.7;
+}
+
+.mockui-meta {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--shot-fg-dim);
+  padding: 6px 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 8px;
+  letter-spacing: 0.01em;
+}
+
+.mockui-tabs {
+  display: flex;
+  gap: 16px;
+  font-family: var(--ff-sans);
+  font-size: 12px;
+  color: var(--shot-fg-dim);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.mockui-tab {
+  padding-bottom: 6px;
+  margin-bottom: -9px;
+  border-bottom: 2px solid transparent;
+}
+
+.mockui-tab.is-active {
+  color: var(--shot-fg);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+.mockui-tab-num {
+  color: var(--shot-fg-dim);
+  font-size: 11px;
+}
+
+/* ---- hero PMP card ---- */
+.mockui-card-pmp {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.015);
+  margin-bottom: 10px;
+}
+
+.mockui-kicker {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--shot-fg-dim);
+  margin-bottom: 6px;
+}
+
+.mockui-card-title {
+  font-family: var(--ff-serif);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.3;
+  color: var(--shot-fg);
+  margin-bottom: 6px;
+}
+
+.mockui-card-desc {
+  font-family: var(--ff-sans);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--shot-fg-dim);
+  margin-bottom: 10px;
+}
+
+.mockui-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mockui-chip {
+  font-family: var(--ff-sans);
+  font-size: 10.5px;
+  background: rgba(107, 79, 224, 0.18);
+  border: 1px solid rgba(107, 79, 224, 0.4);
+  color: #d6c8ff;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* ---- observe card (hero + wow01) ---- */
+.mockui-observe {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.mockui-observe-icon {
+  font-size: 14px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.mockui-observe-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.mockui-observe-line {
+  font-family: var(--ff-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--shot-fg);
+  margin-bottom: 2px;
+}
+
+.mockui-observe-link {
+  font-family: var(--ff-sans);
+  font-size: 11px;
+  color: var(--shot-fg-dim);
+}
+
+/* ---- wow01: commit digest + list ---- */
+.mockui-digest {
+  font-family: var(--ff-sans);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--shot-fg-dim);
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: rgba(107, 79, 224, 0.08);
+  border: 1px solid rgba(107, 79, 224, 0.18);
+  border-radius: 8px;
+}
+
+.mockui-digest strong {
+  color: var(--shot-fg);
+  font-weight: 600;
+}
+
+.mockui-digest em {
+  font-style: normal;
+  color: #b4a4ff;
+}
+
+.mockui-commits {
+  margin-bottom: 10px;
+}
+
+.mockui-commit-row {
+  display: grid;
+  grid-template-columns: 60px 60px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+}
+
+.mockui-commit-row:last-child {
+  border-bottom: none;
+}
+
+.mockui-hash {
+  font-family: var(--ff-mono);
+  font-size: 10.5px;
+  color: var(--shot-fg-dim);
+}
+
+.mockui-when {
+  font-family: var(--ff-sans);
+  font-size: 10.5px;
+  color: var(--shot-fg-dim);
+}
+
+.mockui-subj {
+  font-family: var(--ff-sans);
+  font-size: 11px;
+  color: var(--shot-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mockui-pmp-tag {
+  font-family: var(--ff-sans);
+  font-size: 9.5px;
+  background: rgba(107, 79, 224, 0.18);
+  border: 1px solid rgba(107, 79, 224, 0.35);
+  color: #d6c8ff;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* ---- wow02: Ask tab ---- */
+.mockui-ctxstrip {
+  font-family: var(--ff-sans);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--shot-fg-dim);
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.mockui-ctx-label {
+  color: var(--shot-fg-dim);
+  margin-right: 4px;
+}
+
+.mockui-ctxstrip strong {
+  color: var(--shot-fg);
+  font-weight: 600;
+}
+
+.mockui-section-kicker {
+  font-family: var(--ff-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  color: var(--shot-fg-dim);
+  margin-bottom: 6px;
+}
+
+.mockui-asklist {
+  margin-bottom: 10px;
+}
+
+.mockui-asklist li {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: var(--ff-sans);
+  font-size: 11.5px;
+  color: var(--shot-fg);
+}
+
+.mockui-asklist li:last-child {
+  border-bottom: none;
+}
+
+.mockui-arrow {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.mockui-asktag {
+  font-family: var(--ff-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--shot-fg-dim);
+}
+
+.mockui-askinput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 6px 6px 10px;
+}
+
+.mockui-askinput-ph {
+  flex: 1;
+  font-family: var(--ff-sans);
+  font-size: 11px;
+  color: rgba(232, 230, 240, 0.4);
+}
+
+.mockui-askinput-btn {
+  font-family: var(--ff-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  background: var(--accent);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+/* ---- wow03: Team tab ---- */
+.mockui-team-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.mockui-team-count {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--shot-fg-dim);
+}
+
+.mockui-add-btn {
+  font-family: var(--ff-sans);
+  font-size: 10px;
+  background: rgba(107, 79, 224, 0.18);
+  border: 1px solid rgba(107, 79, 224, 0.4);
+  color: #d6c8ff;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.mockui-member {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.mockui-member:last-child {
+  margin-bottom: 0;
+}
+
+.mockui-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(107, 79, 224, 0.18);
+  border: 1px solid rgba(107, 79, 224, 0.3);
+  color: var(--shot-fg);
+  font-family: var(--ff-sans);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+}
+
+.mockui-member-body {
+  min-width: 0;
+}
+
+.mockui-member-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ff-sans);
+  font-size: 12px;
+  color: var(--shot-fg);
+  margin-bottom: 3px;
+}
+
+.mockui-member-line1 strong {
+  font-weight: 600;
+}
+
+.mockui-role {
+  font-family: var(--ff-sans);
+  font-size: 9.5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--shot-fg-dim);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.mockui-raci {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--ff-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.mockui-raci-a {
+  background: rgba(107, 79, 224, 0.25);
+  border: 1px solid var(--accent);
+  color: #d6c8ff;
+}
+
+.mockui-raci-r {
+  background: rgba(91, 161, 217, 0.25);
+  border: 1px solid #5ba1d9;
+  color: #c8e1f3;
+}
+
+.mockui-raci-c {
+  background: rgba(199, 137, 47, 0.25);
+  border: 1px solid var(--warn);
+  color: #f0d8a8;
+}
+
+.mockui-agent-chip {
+  font-family: var(--ff-mono);
+  font-size: 9.5px;
+  background: rgba(107, 79, 224, 0.12);
+  border: 1px solid rgba(107, 79, 224, 0.22);
+  color: #b4a4ff;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.mockui-talk-btn {
+  font-family: var(--ff-sans);
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--shot-fg);
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
 @media (max-width: 960px) {
-  .hero-real-shot { max-width: 100%; }
+  .mockui-hero {
+    max-width: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .mockui {
+    padding: 14px;
+  }
+  .mockui-commit-row {
+    grid-template-columns: 56px 1fr auto;
+  }
+  .mockui-commit-row .mockui-when {
+    display: none;
+  }
 }

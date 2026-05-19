@@ -107,16 +107,43 @@
               </div>
             </div>
 
-            <!-- Hero 截图：Pace 真实 Now tab (via webContents.capturePage IPC) -->
+            <!-- Hero mock: Now tab — CSS-only, no PNG dependency -->
             <div class="hero-shot" aria-hidden="true">
-              <img
-                class="hero-real-shot"
-                src="./assets/pace-now.png"
-                alt="Pace Now tab — PMP 项目透镜 + 4 张观察卡"
-                width="580"
-                height="900"
-                loading="eager"
-              />
+              <div class="mockui mockui-hero" role="img" aria-label="Pace Now tab mock — PMP 项目透镜卡 + 观察卡">
+                <div class="mockui-header">
+                  <span class="mockui-brand">
+                    <span class="mockui-dot"></span>
+                    <span class="mockui-brand-name">pace</span>
+                    <span class="mockui-brand-sub">PMP project mentor</span>
+                  </span>
+                  <span class="mockui-gear" aria-hidden="true">⚙</span>
+                </div>
+                <div class="mockui-meta">pace · main · 2 dirty · M2.7-highspeed</div>
+                <nav class="mockui-tabs" aria-hidden="true">
+                  <span class="mockui-tab is-active">Now <span class="mockui-tab-num">· 7</span></span>
+                  <span class="mockui-tab">Team</span>
+                  <span class="mockui-tab">Ask</span>
+                </nav>
+
+                <article class="mockui-card-pmp">
+                  <p class="mockui-kicker">PACE · PMP MENTOR</p>
+                  <h4 class="mockui-card-title">Map your work into a PMP project lens</h4>
+                  <p class="mockui-card-desc">Watches your git / cc / team and surfaces stage signals, next steps, and phrasing.</p>
+                  <div class="mockui-chips">
+                    <span class="mockui-chip">cc 8 轮</span>
+                    <span class="mockui-chip">3 commits</span>
+                    <span class="mockui-chip">RACI 2 人</span>
+                  </div>
+                </article>
+
+                <article class="mockui-observe">
+                  <span class="mockui-observe-icon" aria-hidden="true">⏳</span>
+                  <div class="mockui-observe-body">
+                    <p class="mockui-observe-line">Working directly on main</p>
+                    <p class="mockui-observe-link">Want a suggestion →</p>
+                  </div>
+                </article>
+              </div>
             </div>
           </div>
         </div>
@@ -265,12 +292,52 @@
           <ol class="wow-grid">
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <img
-                  class="wow-real-shot"
-                  src="./assets/pace-now.png"
-                  alt="Pace Now tab: PMP 卡 + commit pane + 观察卡"
-                  loading="lazy"
-                />
+                <div class="mockui mockui-wow" role="img" aria-label="Pace Now tab mock — commit digest 自动开口">
+                  <div class="mockui-header mockui-header-sm">
+                    <span class="mockui-brand">
+                      <span class="mockui-dot"></span>
+                      <span class="mockui-brand-name">pace</span>
+                    </span>
+                    <span class="mockui-gear" aria-hidden="true">⚙</span>
+                  </div>
+                  <div class="mockui-meta">pace · main · 2 dirty</div>
+                  <nav class="mockui-tabs" aria-hidden="true">
+                    <span class="mockui-tab is-active">Now <span class="mockui-tab-num">· 7</span></span>
+                    <span class="mockui-tab">Team</span>
+                    <span class="mockui-tab">Ask</span>
+                  </nav>
+
+                  <p class="mockui-digest">最近 <strong>8 个 commit</strong> 多落在 <em>执行 × 整合</em> · 跨度 3 小时</p>
+
+                  <ul class="mockui-commits">
+                    <li class="mockui-commit-row">
+                      <span class="mockui-hash">ea2913c</span>
+                      <span class="mockui-when">45 分钟前</span>
+                      <span class="mockui-subj">ui(landing): tagline v2</span>
+                      <span class="mockui-pmp-tag">执行·范围</span>
+                    </li>
+                    <li class="mockui-commit-row">
+                      <span class="mockui-hash">c400295</span>
+                      <span class="mockui-when">1 小时前</span>
+                      <span class="mockui-subj">feat: landing 5 屏</span>
+                      <span class="mockui-pmp-tag">执行·范围</span>
+                    </li>
+                    <li class="mockui-commit-row">
+                      <span class="mockui-hash">d04ad27</span>
+                      <span class="mockui-when">1 小时前</span>
+                      <span class="mockui-subj">docs+seed: 519 归档</span>
+                      <span class="mockui-pmp-tag">执行·质量</span>
+                    </li>
+                  </ul>
+
+                  <article class="mockui-observe">
+                    <span class="mockui-observe-icon" aria-hidden="true">⏳</span>
+                    <div class="mockui-observe-body">
+                      <p class="mockui-observe-line">上次 commit 是 47 分钟前</p>
+                      <p class="mockui-observe-link">Want a suggestion →</p>
+                    </div>
+                  </article>
+                </div>
               </div>
               <p class="wow-index">01</p>
               <h3 class="wow-title">不用问，feed 先开口</h3>
@@ -281,12 +348,41 @@
 
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <img
-                  class="wow-real-shot"
-                  src="./assets/pace-ask.png"
-                  alt="Pace Ask tab: 上下文 strip + 7 条贴你当前状态的建议追问"
-                  loading="lazy"
-                />
+                <div class="mockui mockui-wow" role="img" aria-label="Pace Ask tab mock — context strip + 7 条建议追问">
+                  <div class="mockui-header mockui-header-sm">
+                    <span class="mockui-brand">
+                      <span class="mockui-dot"></span>
+                      <span class="mockui-brand-name">pace</span>
+                    </span>
+                    <span class="mockui-gear" aria-hidden="true">⚙</span>
+                  </div>
+                  <div class="mockui-meta">pace · main · 2 dirty</div>
+                  <nav class="mockui-tabs" aria-hidden="true">
+                    <span class="mockui-tab">Now <span class="mockui-tab-num">· 7</span></span>
+                    <span class="mockui-tab">Team</span>
+                    <span class="mockui-tab is-active">Ask</span>
+                  </nav>
+
+                  <p class="mockui-ctxstrip">
+                    <span class="mockui-ctx-label">What I see:</span>
+                    <strong>pace</strong> · main · <strong>5</strong> changes · ahead <strong>29</strong> · 3 teammates · chatted <strong>8</strong> times
+                  </p>
+
+                  <p class="mockui-section-kicker">STUCK? TRY ONE OF THESE</p>
+
+                  <ul class="mockui-asklist">
+                    <li><span class="mockui-arrow">→</span> What PMP stage is my current work in?<span class="mockui-asktag">PMP STAGE</span></li>
+                    <li><span class="mockui-arrow">→</span> Editing main directly · how risky?<span class="mockui-asktag">RISK</span></li>
+                    <li><span class="mockui-arrow">→</span> 29 commits unpushed · does it matter?<span class="mockui-asktag">COLLAB</span></li>
+                    <li><span class="mockui-arrow">→</span> That last commit · reasonable move?<span class="mockui-asktag">RETRO</span></li>
+                    <li><span class="mockui-arrow">→</span> How to align with 晓婷 (PM)?<span class="mockui-asktag">COMMS</span></li>
+                  </ul>
+
+                  <div class="mockui-askinput">
+                    <span class="mockui-askinput-ph">Ask anything…</span>
+                    <span class="mockui-askinput-btn">SEND</span>
+                  </div>
+                </div>
               </div>
               <p class="wow-index">02</p>
               <h3 class="wow-title">卡住时，7 条建议先递给你</h3>
@@ -297,12 +393,65 @@
 
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <img
-                  class="wow-real-shot"
-                  src="./assets/pace-team.png"
-                  alt="Pace Team tab: 3 同事 RACI 卡, 点 Talk to them 切 ta 视角"
-                  loading="lazy"
-                />
+                <div class="mockui mockui-wow" role="img" aria-label="Pace Team tab mock — 3 同事 RACI 卡">
+                  <div class="mockui-header mockui-header-sm">
+                    <span class="mockui-brand">
+                      <span class="mockui-dot"></span>
+                      <span class="mockui-brand-name">pace</span>
+                    </span>
+                    <span class="mockui-gear" aria-hidden="true">⚙</span>
+                  </div>
+                  <div class="mockui-meta">pace · main · 2 dirty</div>
+                  <nav class="mockui-tabs" aria-hidden="true">
+                    <span class="mockui-tab">Now <span class="mockui-tab-num">· 7</span></span>
+                    <span class="mockui-tab is-active">Team</span>
+                    <span class="mockui-tab">Ask</span>
+                  </nav>
+
+                  <div class="mockui-team-head">
+                    <span class="mockui-team-count">3 MEMBER(S)</span>
+                    <span class="mockui-add-btn">+ Add member</span>
+                  </div>
+
+                  <article class="mockui-member">
+                    <span class="mockui-avatar">晓婷</span>
+                    <div class="mockui-member-body">
+                      <p class="mockui-member-line1">
+                        <strong>晓婷</strong>
+                        <span class="mockui-role">PM</span>
+                        <span class="mockui-raci mockui-raci-a">A</span>
+                      </p>
+                      <p class="mockui-agent-chip">xiaoting-agent</p>
+                    </div>
+                    <span class="mockui-talk-btn">💬 Talk</span>
+                  </article>
+
+                  <article class="mockui-member">
+                    <span class="mockui-avatar">To</span>
+                    <div class="mockui-member-body">
+                      <p class="mockui-member-line1">
+                        <strong>Tom</strong>
+                        <span class="mockui-role">Eng</span>
+                        <span class="mockui-raci mockui-raci-r">R</span>
+                      </p>
+                      <p class="mockui-agent-chip">tom-cc-session-3a2f</p>
+                    </div>
+                    <span class="mockui-talk-btn">💬 Talk</span>
+                  </article>
+
+                  <article class="mockui-member">
+                    <span class="mockui-avatar">阿珍</span>
+                    <div class="mockui-member-body">
+                      <p class="mockui-member-line1">
+                        <strong>阿珍</strong>
+                        <span class="mockui-role">Designer</span>
+                        <span class="mockui-raci mockui-raci-c">C</span>
+                      </p>
+                      <p class="mockui-agent-chip">azhen-agent</p>
+                    </div>
+                    <span class="mockui-talk-btn">💬 Talk</span>
+                  </article>
+                </div>
               </div>
               <p class="wow-index">03</p>
               <h3 class="wow-title">切到 ta 的视角，把话先说一遍</h3>
