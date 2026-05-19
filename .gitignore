@@ -50,3 +50,6 @@ coverage/
 # Local scratch
 scratch/
 tmp/
+
+# Local landing-site screenshot dumps (used to preview hero tagline variants)
+.shots/

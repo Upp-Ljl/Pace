@@ -1,0 +1,33 @@
+# Pace landing site is just the 3 files at repo root:
+#   index.html / styles.css / app.js
+# Everything else is the Electron app + docs that Vercel doesn't need.
+
+packages/
+_reference-from-cairn/
+.pace-push-token/
+.git/
+node_modules/
+
+# Markdown docs (kept in repo, not served from landing site)
+*.md
+!index.html
+
+# Source / native code
+*.cjs
+*.mjs
+*.node
+
+# Electron / SQLite build artifacts
+build/
+dist/
+out/
+
+# Editor / OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+.tmp/
