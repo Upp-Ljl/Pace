@@ -512,6 +512,77 @@ body {
 }
 .tool-event-result.err { color: var(--alert); }
 
+/* ============================================================
+   TODO chips (actionable next steps under mentor reply)
+   ============================================================ */
+.mentor-todos {
+  display: flex; flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  background: var(--accent-bg);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+.mentor-todos-head {
+  font-family: var(--font);
+  font-size: 10.5px;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.todo-chip {
+  display: flex; align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(13, 15, 16, 0.45);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+html[data-pace-theme="light"] .todo-chip {
+  background: rgba(252, 250, 247, 0.85);
+}
+.todo-chip .todo-main { flex: 1 1 auto; min-width: 0; }
+.todo-chip .todo-cmd {
+  display: block;
+  background: rgba(111, 181, 176, 0.10);
+  color: var(--accent);
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-family: var(--font);
+  font-size: 11.5px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+.todo-chip .todo-desc {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.todo-chip .todo-copy {
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 3px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: all var(--dur-micro);
+  white-space: nowrap;
+}
+.todo-chip .todo-copy:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 .msg-answer-stream,
 .msg-answer {
   font-family: var(--font-prose);
@@ -1426,13 +1497,10 @@ html[data-pace-theme="light"] #now-hero {
     <button id="send" data-i18n="ask.send">SEND</button>
   </footer>
 
-  <!-- FOOTER status bar -->
+  <!-- FOOTER status bar (latency moved to per-bubble timestamp) -->
   <footer id="footer">
     <span class="footer-item">
       <span class="status-dot" id="footer-llm-dot"></span>
-    </span>
-    <span class="footer-item right">
-      <code id="footer-last-latency"></code>
     </span>
   </footer>
 

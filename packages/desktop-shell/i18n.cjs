@@ -169,6 +169,11 @@ const dict = {
   'sug.tempo.prompt':          { 'zh-CN': '基于我的 git 历史 + 团队 + cc 活动，到目前为止我的工作节奏合不合理？有什么值得调整的？', en: 'Based on my git history + team + cc activity, is my working pace reasonable? Anything to adjust?' },
 
   // ===== Streaming =====
+  'todo.heading':              { 'zh-CN': '📋 可执行的下一步',                          en: '📋 Actionable next steps' },
+  'todo.copy':                 { 'zh-CN': '复制',                                      en: 'Copy' },
+  'todo.copied':               { 'zh-CN': '✓ 已复制',                                  en: '✓ Copied' },
+  'todo.copy.title':           { 'zh-CN': '复制到剪贴板，可粘到 cc / 其它 agent 里',     en: 'Copy to clipboard — paste into your cc / other agent' },
+
   'stream.thinking':           { 'zh-CN': '推理中',                                    en: 'Reasoning' },
   'stream.thinking_done':      { 'zh-CN': '推理完成',                                  en: 'Reasoning done' },
   'stream.pending':            { 'zh-CN': '思考中…（30–60 秒，大模型在推理）',         en: 'Thinking… (30–60 s, model reasoning)' },

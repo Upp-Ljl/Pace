@@ -881,6 +881,9 @@ async function streamMentorInto(parent, text, opts) {
     } else if (chunk.type === 'done') {
       // Replace the stream-rendered text with proper markdown
       const finalText = chunk.final || answerText;
+      const totalElapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      // Defensive: remove any typing cursor anywhere inside this bubble
+      ui.root.querySelectorAll('.typing-cursor').forEach((c) => c.remove());
       if (ui.cursor.parentNode) ui.cursor.parentNode.removeChild(ui.cursor);
       const md = document.createElement('div');
       md.className = 'msg-answer';
@@ -904,8 +907,12 @@ async function streamMentorInto(parent, text, opts) {
       }
       ui.root.classList.remove('streaming');
       ui.root.classList.add('finished');
-      // Timestamp
-      const tsEl = document.createElement('span'); tsEl.className = 'ts'; tsEl.textContent = tsLabel();
+      // Extract any TODO list from the final markdown and render as action chips
+      maybeExtractAndRenderTodos(ui.root, finalText);
+      // Timestamp + per-bubble latency (replaces the old footer pill)
+      const tsEl = document.createElement('span');
+      tsEl.className = 'ts';
+      tsEl.textContent = `${tsLabel()} · ${totalElapsed}s`;
       ui.root.appendChild(tsEl);
       if (ctx) ctx.scrollTop = ctx.scrollHeight;
     } else if (chunk.type === 'error') {
@@ -932,7 +939,6 @@ async function send() {
   sendBtn.disabled = true;
   inputEl.value = '';
   appendUserMsg(text);
-  if (footerStatus) footerStatus.textContent = '思考中…';
   // Build history payload from accumulated askConversation
   const historyForApi = askConversation.slice(-12);
   const opts = { history: historyForApi };
@@ -946,19 +952,88 @@ async function send() {
       // Cap at last 24 entries (12 turns)
       if (askConversation.length > 24) askConversation = askConversation.slice(-24);
     }
-    if (r && r.debug && r.debug.elapsed_ms && footerLastLatency) {
-      footerLastLatency.textContent = (r.debug.elapsed_ms / 1000).toFixed(1) + 's';
-    }
-    if (footerStatus) footerStatus.textContent = '就绪';
     window.pace.log('panel', 'mentor_reply', { input_length: text.length, stage: r && r.debug && r.debug.stage, history_turns: askConversation.length / 2 });
   } catch (err) {
-    if (footerStatus) footerStatus.textContent = '出错';
     window.pace.log('panel', 'mentor_reply_error', { error: String(err) }, 'error');
   } finally {
     sendBtn.disabled = false;
     inputEl.focus();
     refreshAll();
   }
+}
+
+// --- TODO extraction from mentor markdown ---
+function maybeExtractAndRenderTodos(rootEl, finalText) {
+  if (!finalText) return;
+  if (!/##+\s*(📋\s*)?TODO\b/i.test(finalText)) return;
+  // Find the heading element whose text contains TODO
+  const headings = rootEl.querySelectorAll('h1, h2, h3');
+  let target = null;
+  for (const h of headings) {
+    if (/TODO/i.test(h.textContent)) { target = h; break; }
+  }
+  if (!target) return;
+  const next = target.nextElementSibling;
+  if (!next || next.tagName !== 'UL') return;
+  const items = Array.from(next.querySelectorAll('li'));
+  if (items.length === 0) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'mentor-todos';
+  const wrapHead = document.createElement('div');
+  wrapHead.className = 'mentor-todos-head';
+  wrapHead.textContent = t('todo.heading');
+  wrap.appendChild(wrapHead);
+
+  items.forEach((li) => {
+    const codeEl = li.querySelector('code');
+    const cmd = codeEl ? codeEl.textContent : li.textContent.trim();
+    // Pull description as text after the code element
+    let description = '';
+    if (codeEl) {
+      const after = li.innerHTML.split(codeEl.outerHTML)[1] || '';
+      description = after.replace(/<[^>]+>/g, '').replace(/^[\s—–—–\-:·]+/, '').trim();
+    } else {
+      description = '';
+    }
+
+    const chip = document.createElement('div');
+    chip.className = 'todo-chip';
+
+    const main = document.createElement('div');
+    main.className = 'todo-main';
+
+    const cmdEl = document.createElement('code');
+    cmdEl.className = 'todo-cmd';
+    cmdEl.textContent = cmd;
+    main.appendChild(cmdEl);
+
+    if (description) {
+      const desc = document.createElement('div');
+      desc.className = 'todo-desc';
+      desc.textContent = description;
+      main.appendChild(desc);
+    }
+    chip.appendChild(main);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'todo-copy';
+    copyBtn.textContent = t('todo.copy');
+    copyBtn.title = t('todo.copy.title');
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(cmd);
+        copyBtn.textContent = t('todo.copied');
+        setTimeout(() => { copyBtn.textContent = t('todo.copy'); }, 1500);
+      } catch (_e) { copyBtn.textContent = '✗'; }
+    });
+    chip.appendChild(copyBtn);
+
+    wrap.appendChild(chip);
+  });
+
+  next.parentNode.replaceChild(wrap, next);
+  target.classList.add('todo-heading');
 }
 
 sendBtn.addEventListener('click', send);
