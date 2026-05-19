@@ -25,6 +25,14 @@ const DEFAULTS = Object.freeze({
   minimax_model:    'MiniMax-M2.7-highspeed',
   knowledge_source: 'pmp',
   install_cc_hook:  false,
+  // Appearance
+  theme:            'dark',    // 'dark' | 'light' | 'auto'
+  font_size:        'medium',  // 'small' | 'medium' | 'large'
+  panel_width:      'regular', // 'slim' (420) | 'regular' (460) | 'wide' (520)
+  // Behavior (v0.2 占位)
+  autostart:        false,
+  start_minimized:  false,
+  language:         'zh-CN',   // 'zh-CN' | 'en' (v0.2)
 });
 
 function ensureDir(p) {
@@ -108,11 +116,19 @@ function getSettings() {
     minimax_model:    model.value || DEFAULTS.minimax_model,
     minimax_base_url_source: url.source,
     minimax_model_source:    model.source,
-    minimax_api_key_source:  key.source,        // 'env' | 'config' | 'missing'
-    has_minimax_config:      !!key.value,        // url+model fall back to DEFAULTS; key is the gate
+    minimax_api_key_source:  key.source,
+    has_minimax_config:      !!key.value,
     knowledge_source:        cfg.knowledge_source || DEFAULTS.knowledge_source,
     install_cc_hook:         Boolean(cfg.install_cc_hook ?? DEFAULTS.install_cc_hook),
-    config_path:             CONFIG_PATH,
+    // Appearance
+    theme:            cfg.theme       || DEFAULTS.theme,
+    font_size:        cfg.font_size   || DEFAULTS.font_size,
+    panel_width:      cfg.panel_width || DEFAULTS.panel_width,
+    // Behavior placeholders
+    autostart:        Boolean(cfg.autostart       ?? DEFAULTS.autostart),
+    start_minimized:  Boolean(cfg.start_minimized ?? DEFAULTS.start_minimized),
+    language:         cfg.language || DEFAULTS.language,
+    config_path:      CONFIG_PATH,
   };
 }
 
@@ -134,6 +150,12 @@ function saveSettings(patch) {
     }
     if (typeof patch.knowledge_source === 'string') next.knowledge_source = patch.knowledge_source;
     if (patch.install_cc_hook !== undefined) next.install_cc_hook = Boolean(patch.install_cc_hook);
+    if (typeof patch.theme === 'string' && ['dark','light','auto'].includes(patch.theme)) next.theme = patch.theme;
+    if (typeof patch.font_size === 'string' && ['small','medium','large'].includes(patch.font_size)) next.font_size = patch.font_size;
+    if (typeof patch.panel_width === 'string' && ['slim','regular','wide'].includes(patch.panel_width)) next.panel_width = patch.panel_width;
+    if (patch.autostart !== undefined) next.autostart = Boolean(patch.autostart);
+    if (patch.start_minimized !== undefined) next.start_minimized = Boolean(patch.start_minimized);
+    if (typeof patch.language === 'string' && ['zh-CN','en'].includes(patch.language)) next.language = patch.language;
   }
   writeConfigFile(next);
   return getSettings();

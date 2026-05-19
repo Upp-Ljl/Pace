@@ -48,6 +48,17 @@ const minimaxBaseUrlInput  = document.getElementById('minimax-base-url');
 const minimaxApiKeyInput   = document.getElementById('minimax-api-key');
 const minimaxModelInput    = document.getElementById('minimax-model');
 
+const segTheme       = document.getElementById('seg-theme');
+const segFontSize    = document.getElementById('seg-font-size');
+const segPanelWidth  = document.getElementById('seg-panel-width');
+
+const asMemberBanner = document.getElementById('as-member-banner');
+const asMemberName   = document.getElementById('as-member-name');
+const clearAsMemberBtn = document.getElementById('clear-as-member');
+
+// active member persona for Ask tab (null = normal mentor)
+let activeAsMember = null;
+
 // Team
 const teamListEl       = document.getElementById('team-list');
 const teamEmptyEl      = document.getElementById('team-empty');
@@ -866,7 +877,8 @@ async function streamMentorInto(parent, text, opts) {
   };
 
   try {
-    return await window.pace.streamMentorAsk({ text, ...(opts || {}) }, onChunk);
+    const callOpts = Object.assign({ text }, opts || {});
+    return await window.pace.streamMentorAsk(callOpts, onChunk);
   } catch (err) {
     ui.root.className = 'msg error fade-in-up';
     ui.root.innerHTML = '';
@@ -882,8 +894,9 @@ async function send() {
   inputEl.value = '';
   appendUserMsg(text);
   if (footerStatus) footerStatus.textContent = '思考中…';
+  const opts = activeAsMember ? { as_member_id: activeAsMember.id } : {};
   try {
-    const r = await streamMentorInto(askHistoryEl, text, {});
+    const r = await streamMentorInto(askHistoryEl, text, opts);
     if (r && r.debug && r.debug.elapsed_ms && footerLastLatency) {
       footerLastLatency.textContent = (r.debug.elapsed_ms / 1000).toFixed(1) + 's';
     }
@@ -1049,12 +1062,34 @@ function renderAskSuggestions(snap) {
 }
 
 // --- Settings modal ---
+function applyAppearance(s) {
+  // Theme
+  let effective = s.theme;
+  if (s.theme === 'auto') {
+    const sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    effective = sysDark ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-pace-theme', effective);
+  document.documentElement.setAttribute('data-pace-font', s.font_size || 'medium');
+}
+
+function setSegActive(container, value) {
+  if (!container) return;
+  container.querySelectorAll('.seg').forEach((b) => {
+    b.classList.toggle('active', b.dataset.value === value);
+  });
+}
+
 async function loadSettings() {
   try {
     const s = await window.pace.getSettings();
     minimaxBaseUrlInput.value = s.minimax_base_url || '';
     minimaxModelInput.value   = s.minimax_model   || '';
     minimaxApiKeyInput.value  = '';
+    setSegActive(segTheme,      s.theme || 'dark');
+    setSegActive(segFontSize,   s.font_size || 'medium');
+    setSegActive(segPanelWidth, s.panel_width || 'regular');
+    applyAppearance(s);
     if (s.has_minimax_config) {
       settingsStatusEl.className = 'status-row ok';
       settingsStatusEl.textContent =
@@ -1069,6 +1104,23 @@ async function loadSettings() {
     settingsStatusEl.textContent = '加载设置出错：' + err.message;
   }
 }
+
+// Wire segmented controls: clicking marks active and live-applies appearance
+[segTheme, segFontSize, segPanelWidth].forEach((seg) => {
+  if (!seg) return;
+  seg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg');
+    if (!btn) return;
+    seg.querySelectorAll('.seg').forEach((b) => b.classList.toggle('active', b === btn));
+    // Live preview before save:
+    const previewSettings = {
+      theme:       segTheme.querySelector('.seg.active')?.dataset.value || 'dark',
+      font_size:   segFontSize.querySelector('.seg.active')?.dataset.value || 'medium',
+      panel_width: segPanelWidth.querySelector('.seg.active')?.dataset.value || 'regular',
+    };
+    applyAppearance(previewSettings);
+  });
+});
 function openModal() {
   modalEl.classList.add('open');
   modalEl.setAttribute('aria-hidden', 'false');
@@ -1090,10 +1142,14 @@ saveSettingsBtn.addEventListener('click', async () => {
     const patch = {
       minimax_base_url: minimaxBaseUrlInput.value,
       minimax_model:    minimaxModelInput.value,
+      theme:       segTheme.querySelector('.seg.active')?.dataset.value || 'dark',
+      font_size:   segFontSize.querySelector('.seg.active')?.dataset.value || 'medium',
+      panel_width: segPanelWidth.querySelector('.seg.active')?.dataset.value || 'regular',
     };
     const newKey = minimaxApiKeyInput.value.trim();
     if (newKey) patch.minimax_api_key = newKey;
     const s = await window.pace.saveSettings(patch);
+    applyAppearance(s);
     if (s && s.has_minimax_config) {
       settingsStatusEl.className = 'status-row ok';
       settingsStatusEl.textContent = '✓ 已保存到 ' + s.config_path;
@@ -1209,6 +1265,17 @@ function renderTeam(members) {
 
     const actions = document.createElement('div');
     actions.className = 'tm-actions';
+
+    const talkBtn = document.createElement('button');
+    talkBtn.className = 'tm-talk-btn';
+    talkBtn.textContent = '💬 和 ta 谈';
+    talkBtn.title = `以 ${m.name} 的视角和你对话`;
+    talkBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      startMemberPersona(m);
+    });
+    actions.appendChild(talkBtn);
+
     const editBtn = document.createElement('button');
     editBtn.className = 'tm-action-btn';
     editBtn.textContent = '✎';
@@ -1220,6 +1287,24 @@ function renderTeam(members) {
     teamListEl.appendChild(row);
   }
 }
+
+// --- Member persona (Ask tab as member) ---
+function startMemberPersona(member) {
+  activeAsMember = member;
+  asMemberName.textContent = `${member.name}${member.role ? '（' + member.role + '）' : ''}`;
+  asMemberBanner.hidden = false;
+  switchTab('ask');
+  inputEl.focus();
+  inputEl.placeholder = `用问 ${member.name} 的语气提问…`;
+}
+
+function clearMemberPersona() {
+  activeAsMember = null;
+  asMemberBanner.hidden = true;
+  inputEl.placeholder = '问点什么…';
+}
+
+clearAsMemberBtn.addEventListener('click', clearMemberPersona);
 
 // --- Member modal ---
 
@@ -1327,6 +1412,11 @@ document.addEventListener('keydown', (e) => {
 // --- Boot ---
 window.addEventListener('DOMContentLoaded', async () => {
   window.pace.log('panel', 'boot', { version: '0.1.0', form: 'feed-first-tabs' });
+  // Apply theme/font from saved settings BEFORE first paint of content
+  try {
+    const s0 = await window.pace.getSettings();
+    applyAppearance(s0);
+  } catch (_e) {}
   await refreshAll();
   // Start git fs watcher; receive events here for live refresh.
   try {

@@ -102,6 +102,15 @@ body {
   vertical-align: middle;
   opacity: 0.85;
 }
+#brand small {
+  font-family: var(--font-prose);
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  margin-left: 8px;
+  text-transform: none;
+}
 #header .spacer { flex: 1 1 auto; }
 .win-btn {
   -webkit-app-region: no-drag;
@@ -1029,6 +1038,168 @@ body {
 }
 .modal .status-row.ok { color: var(--ok); border-color: var(--accent-muted); }
 .modal .status-row.warn { color: var(--warn); border-color: var(--warn); }
+
+/* Section labels inside settings */
+.settings-section-label {
+  font-family: var(--font);
+  font-size: 9.5px;
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin: 18px 0 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-section-label:first-of-type { margin-top: 0; }
+
+/* Segmented control (theme / font / width) */
+.seg-control {
+  display: flex; gap: 4px;
+  background: rgba(13, 15, 16, 0.5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+}
+.seg-control .seg {
+  flex: 1 1 0;
+  background: transparent; border: none;
+  font-family: var(--font); font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all var(--dur-micro);
+}
+.seg-control .seg:hover { color: var(--text-primary); }
+.seg-control .seg.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.checkbox-field .check-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11.5px; color: var(--text-secondary);
+  cursor: pointer;
+}
+.checkbox-field input[type="checkbox"] {
+  width: auto; margin: 0;
+}
+.checkbox-field em {
+  color: var(--text-faint); font-style: italic;
+  font-size: 10.5px;
+}
+
+/* Member chat affordance */
+.tm-talk-btn {
+  -webkit-app-region: no-drag;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+  cursor: pointer;
+  padding: 3px 9px;
+  margin-left: 6px;
+  font-family: var(--font); font-size: 10px;
+  font-weight: 600;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  transition: all var(--dur-micro);
+}
+.tm-talk-btn:hover { background: var(--accent); color: var(--on-accent); }
+
+/* Ask tab — active member persona banner */
+#as-member-banner {
+  padding: 8px 14px;
+  background: rgba(111, 181, 176, 0.10);
+  border-bottom: 1px solid var(--accent-muted);
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-family: var(--font-prose);
+}
+#as-member-banner strong { color: var(--accent); }
+#as-member-banner .clear-as-member {
+  -webkit-app-region: no-drag;
+  margin-left: auto;
+  background: none; border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font); font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+#as-member-banner .clear-as-member:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Light theme overrides */
+html[data-pace-theme="light"] {
+  --bg-base:      rgba(245, 243, 240, 0.85);
+  --bg-surface:   rgba(252, 250, 247, 0.85);
+  --bg-elevated:  rgba(255, 254, 252, 0.92);
+  --bg-card:      rgba(255, 253, 250, 0.70);
+  --border:       rgba(176, 165, 152, 0.35);
+  --border-focus: rgba(78, 130, 126, 0.50);
+
+  --text-primary:   #2a2825;
+  --text-secondary: #5a5550;
+  --text-muted:     #837d75;
+  --text-faint:     #b3aca3;
+
+  --accent:       #4e827e;
+  --accent-muted: #6fb5b0;
+  --accent-bg:    rgba(78, 130, 126, 0.10);
+  --on-accent:    #fafaf7;
+
+  --user-bg:      rgba(176, 137, 104, 0.18);
+  --user-border:  rgba(150, 110, 70, 0.55);
+}
+html[data-pace-theme="light"] body {
+  background: transparent;
+}
+html[data-pace-theme="light"] #app {
+  background: linear-gradient(180deg,
+    rgba(252, 250, 247, 0.70) 0%,
+    rgba(245, 243, 240, 0.80) 50%,
+    rgba(252, 250, 247, 0.70) 100%);
+}
+
+/* Font-size root overrides */
+html[data-pace-font="small"]  body { font-size: 12.5px; }
+html[data-pace-font="medium"] body { font-size: 13.5px; }
+html[data-pace-font="large"]  body { font-size: 15px; }
+
+/* Now-tab empty-state hero (positioning more visible) */
+#now-hero {
+  padding: 18px 14px 10px;
+  background: rgba(20, 23, 26, 0.30);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-prose);
+  display: flex; flex-direction: column; gap: 4px;
+  flex: 0 0 auto;
+}
+html[data-pace-theme="light"] #now-hero {
+  background: rgba(252, 250, 247, 0.50);
+}
+#now-hero .hero-eyebrow {
+  font-family: var(--font);
+  font-size: 9.5px;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+#now-hero .hero-title {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.45;
+}
+#now-hero .hero-subtitle {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin-top: 2px;
+}
 </style>
 </head>
 <body>
@@ -1036,7 +1207,10 @@ body {
 
   <!-- HEADER -->
   <header id="header">
-    <span id="brand"><span class="dot"></span>pace</span>
+    <span id="brand">
+      <span class="dot"></span>pace
+      <small id="brand-subtitle">PMP 项目导师</small>
+    </span>
     <span class="spacer"></span>
     <button class="win-btn" id="open-settings" title="设置">⚙</button>
     <button class="win-btn" id="toggle-pin" title="置顶">📌</button>
@@ -1055,6 +1229,12 @@ body {
 
   <!-- VIEW: NOW -->
   <div class="view" id="view-now">
+    <!-- Positioning hero (always visible) -->
+    <section id="now-hero">
+      <div class="hero-eyebrow">PACE · PMP 项目导师</div>
+      <div class="hero-title">把当前 cc 工作放进 PMP 项目视角</div>
+      <div class="hero-subtitle">观察你的 git / cc / 团队，给你 PMP 阶段判断 + 下一步 + 沟通话术。淡淡的，不打扰。</div>
+    </section>
     <!-- Commit pane (non-sticky, collapsible 3↔10 with PMP digest) -->
     <section id="commit-pane" class="commit-pane">
       <div class="commit-pane-head">
@@ -1093,6 +1273,10 @@ body {
 
   <!-- VIEW: ASK -->
   <div class="view" id="view-ask" hidden>
+    <div id="as-member-banner" hidden>
+      <span>正在以 <strong id="as-member-name">—</strong> 的视角对话</span>
+      <button class="clear-as-member" id="clear-as-member">退出 ta 的视角</button>
+    </div>
     <div id="ask-context">
       <span id="ask-context-text">读着你的工作上下文…</span>
     </div>
@@ -1115,7 +1299,6 @@ body {
   <footer id="footer">
     <span class="footer-item">
       <span class="status-dot" id="footer-llm-dot"></span>
-      <code id="footer-status">就绪</code>
     </span>
     <span class="footer-item right">
       <code id="footer-last-latency"></code>
@@ -1191,6 +1374,56 @@ body {
 <div class="modal-backdrop" id="modal" aria-hidden="true">
   <div class="modal" role="dialog">
     <h2>设置</h2>
+
+    <div class="settings-section-label">外观</div>
+    <div class="field">
+      <label>主题</label>
+      <div class="seg-control" id="seg-theme">
+        <button class="seg" data-value="dark">暗</button>
+        <button class="seg" data-value="light">亮</button>
+        <button class="seg" data-value="auto">跟随系统</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>字号</label>
+      <div class="seg-control" id="seg-font-size">
+        <button class="seg" data-value="small">小</button>
+        <button class="seg" data-value="medium">标准</button>
+        <button class="seg" data-value="large">大</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>面板宽度</label>
+      <div class="seg-control" id="seg-panel-width">
+        <button class="seg" data-value="slim">窄 (420)</button>
+        <button class="seg" data-value="regular">标准 (460)</button>
+        <button class="seg" data-value="wide">宽 (520)</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="lang-select">语言</label>
+      <select id="lang-select" disabled>
+        <option value="zh-CN">简体中文</option>
+        <option value="en">English（v0.2）</option>
+      </select>
+      <div class="hint">v0.1 仅中文，i18n 在 v0.2 上线。</div>
+    </div>
+
+    <div class="settings-section-label">行为</div>
+    <div class="field checkbox-field">
+      <label class="check-row" style="opacity: 0.55">
+        <input type="checkbox" id="opt-autostart" disabled>
+        <span>开机自动启动 <em>（v0.2 占位）</em></span>
+      </label>
+    </div>
+    <div class="field checkbox-field">
+      <label class="check-row" style="opacity: 0.55">
+        <input type="checkbox" id="opt-start-minimized" disabled>
+        <span>启动时直接缩到托盘 <em>（v0.2 占位）</em></span>
+      </label>
+    </div>
+
+    <div class="settings-section-label">LLM Provider</div>
     <div class="field">
       <label for="minimax-base-url">MiniMax Base URL</label>
       <input id="minimax-base-url" type="text" placeholder="https://api.minimaxi.com/v1" autocomplete="off">
@@ -1206,6 +1439,7 @@ body {
       <input id="minimax-model" type="text" placeholder="MiniMax-M2.7-highspeed" autocomplete="off">
       <div class="hint">默认 <code>MiniMax-M2.7-highspeed</code>。基础版 <code>MiniMax-M2.7</code>，旧版 <code>MiniMax-M2.5</code> / <code>MiniMax-M2.1</code> / <code>MiniMax-M2</code> 均可。</div>
     </div>
+
     <div id="settings-status" class="status-row" aria-live="polite">加载中…</div>
     <div class="row">
       <button class="secondary" id="close-settings">CANCEL</button>

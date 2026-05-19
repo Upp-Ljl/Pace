@@ -30,7 +30,11 @@ const ccBridge = require('./cc-bridge.cjs');
 const { buildTrayPng } = require('./tray-icon.cjs');
 const { GitWatcher } = require('./git-watcher.cjs');
 
-const WIN_WIDTH = 460;
+const PANEL_WIDTHS = { slim: 420, regular: 460, wide: 520 };
+function resolveWinWidth() {
+  const w = PANEL_WIDTHS[config.getSettings().panel_width];
+  return Number.isFinite(w) ? w : 460;
+}
 
 let mainWindow = null;
 let tray = null;
@@ -39,13 +43,14 @@ let isQuitting = false;
 function createMainWindow() {
   const display = screen.getPrimaryDisplay();
   const { workArea } = display;
-  const x = workArea.x + workArea.width - WIN_WIDTH;
+  const winWidth = resolveWinWidth();
+  const x = workArea.x + workArea.width - winWidth;
   const y = workArea.y;
   const height = workArea.height;
 
   mainWindow = new BrowserWindow({
     x, y,
-    width: WIN_WIDTH,
+    width: winWidth,
     height,
     minWidth: 380,
     minHeight: 400,
@@ -164,8 +169,9 @@ ipcMain.handle('pace:mentor-ask-stream', async (event, input) => {
     return { markdown: md, debug: { stage: 'reject', reason: 'empty_input' } };
   }
   const cwd = (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
+  const asMemberId = (input && Number.isInteger(input.as_member_id)) ? input.as_member_id : null;
   try {
-    return await mentorPipeline.runMentorTurnStream(text, { cwd }, (chunk) => {
+    return await mentorPipeline.runMentorTurnStream(text, { cwd, as_member_id: asMemberId }, (chunk) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('pace:stream-chunk', { stream_id: streamId, chunk });
       }
@@ -180,7 +186,25 @@ ipcMain.handle('pace:mentor-ask-stream', async (event, input) => {
 // --- IPC: settings ---
 
 ipcMain.handle('pace:settings-get', async () => config.getSettings());
-ipcMain.handle('pace:settings-save', async (_event, patch) => config.saveSettings(patch || {}));
+ipcMain.handle('pace:settings-save', async (_event, patch) => {
+  const newSettings = config.saveSettings(patch || {});
+  // Apply panel_width live by resizing window
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const display = screen.getPrimaryDisplay();
+    const { workArea } = display;
+    const w = PANEL_WIDTHS[newSettings.panel_width] || 460;
+    const bounds = mainWindow.getBounds();
+    if (bounds.width !== w) {
+      mainWindow.setBounds({
+        x: workArea.x + workArea.width - w,
+        y: workArea.y,
+        width: w,
+        height: workArea.height,
+      });
+    }
+  }
+  return newSettings;
+});
 
 // --- IPC: team ---
 
