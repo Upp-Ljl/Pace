@@ -1108,6 +1108,25 @@ pre {
   }
 }
 
+/* ===== Wow real screenshots (replaces .wow-shot-frame CSS mocks) ===== */
+.wow-real-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  border: 3px solid var(--bg-base);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 0 0 8px var(--accent-soft),
+    0 16px 36px -12px rgba(75, 51, 184, 0.30),
+    0 6px 16px -6px rgba(27, 26, 34, 0.16);
+  background: var(--shot-bg);
+  /* Crop to top so the panel header + first card is the focus */
+  max-height: 360px;
+  object-fit: cover;
+  object-position: top center;
+}
+
 /* ===== Hero real screenshot (replaces .shot-frame CSS mock) ===== */
 /* Inherits the same purple-glow framing as .shot-frame above so the
    hero card composition reads identically; just swaps the CSS-mocked

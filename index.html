@@ -265,82 +265,49 @@
           <ol class="wow-grid">
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <div class="wow-shot-frame">
-                  <div class="shot-panel-tabs">
-                    <span class="shot-tab is-active">现在</span>
-                    <span class="shot-tab">问问</span>
-                    <span class="shot-tab">团队</span>
-                  </div>
-                  <div class="shot-card shot-card-inline">
-                    <div class="shot-card-head">
-                      <span class="shot-card-pin">✦</span>
-                      <span class="shot-card-title mono"
-                        >feat: streaming output + thinking animation</span
-                      >
-                    </div>
-                    <p class="shot-card-stage">
-                      <em>Planning · Scope Definition · 72%</em>
-                    </p>
-                    <p class="shot-card-body">
-                      先和后端 owner 对齐 API contract。
-                    </p>
-                  </div>
-                </div>
+                <img
+                  class="wow-real-shot"
+                  src="./assets/pace-now.png"
+                  alt="Pace Now tab: PMP 卡 + commit pane + 观察卡"
+                  loading="lazy"
+                />
               </div>
               <p class="wow-index">01</p>
               <h3 class="wow-title">不用问，feed 先开口</h3>
               <p class="wow-body">
-                你推的每个 commit，Pace 自动给出 PMP 阶段标签和下一步话术。<strong>不用问。</strong>
+                你 push 的每个 commit，Pace 自动打 PMP 阶段标签。<strong>「在 main 上裸改」</strong>「<strong>29 个 commit 没 push</strong>」——观察卡自己跳出来。
               </p>
             </li>
 
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <div class="wow-shot-frame">
-                  <div class="shot-thinking shot-thinking-wide">
-                    <span class="shot-thinking-label"
-                      >思考 140 字 · 29s ▾</span
-                    >
-                  </div>
-                  <div class="shot-bubble">
-                    <p class="shot-bubble-text">
-                      你早上推的 3 个 commit 在 Planning 阶段——先和王后端把 API 对一遍。
-                    </p>
-                  </div>
-                </div>
+                <img
+                  class="wow-real-shot"
+                  src="./assets/pace-ask.png"
+                  alt="Pace Ask tab: 上下文 strip + 7 条贴你当前状态的建议追问"
+                  loading="lazy"
+                />
               </div>
               <p class="wow-index">02</p>
-              <h3 class="wow-title">思考像 DeepSeek，正文一来就让位</h3>
+              <h3 class="wow-title">卡住时，7 条建议先递给你</h3>
               <p class="wow-body">
-                思考字流一上来，框就缩。正文是主角，思考是配菜——一行 header 留给你回看。
+                输入框上面那行：「<strong>pace · main · 5 changes · ahead 29 · 3 teammates</strong>」——Pace 看到的你。下面 7 条建议都是贴这个状态拼出来的，<strong>不用现想开口的句子。</strong>
               </p>
             </li>
 
             <li class="wow-card">
               <div class="wow-shot" aria-hidden="true">
-                <div class="wow-shot-frame">
-                  <div class="shot-panel-tabs">
-                    <span class="shot-tab">现在</span>
-                    <span class="shot-tab is-active">问问</span>
-                    <span class="shot-tab">团队</span>
-                  </div>
-                  <div class="shot-banner">
-                    <span class="shot-banner-text">
-                      以 <em>王后端</em> 的视角和你对话
-                    </span>
-                    <span class="shot-banner-exit">[退出 ta 的视角]</span>
-                  </div>
-                  <div class="shot-bubble shot-bubble-them">
-                    <p class="shot-bubble-text">
-                      这个 API 的 error code 你定了几种？前端拿 401 跟 403 还分得清吗？
-                    </p>
-                  </div>
-                </div>
+                <img
+                  class="wow-real-shot"
+                  src="./assets/pace-team.png"
+                  alt="Pace Team tab: 3 同事 RACI 卡, 点 Talk to them 切 ta 视角"
+                  loading="lazy"
+                />
               </div>
               <p class="wow-index">03</p>
               <h3 class="wow-title">切到 ta 的视角，把话先说一遍</h3>
               <p class="wow-body">
-                见面前切到 ta 的视角，让 mentor 用 ta 的口气问你一遍——上桌前先排练完。
+                团队里每个人都有 <strong>RACI 标签</strong>和 <strong>agent 代号</strong>。点「Talk to them」，mentor 切到 ta 的口气和你对话——见面前先把 ta 的反应预演一遍。
               </p>
             </li>
           </ol>
