@@ -294,10 +294,11 @@
   // Inject a small round stamp into the top-left of each major section.
   // Stamp pops in when section crosses ~14% into viewport.
   var sectionStampMap = [
-    { sel: '.cases',     label: '已读' },
-    { sel: '.theatre',   label: '复核' },
-    { sel: '.promises',  label: '归档' },
-    { sel: '.download',  label: '存档' },
+    { sel: '.cases',         label: '已读' },
+    { sel: '.theatre',       label: '复核' },
+    { sel: '.exhibits-live', label: '活样' },
+    { sel: '.promises',      label: '归档' },
+    { sel: '.download',      label: '存档' },
   ];
   sectionStampMap.forEach(function (def) {
     var sec = document.querySelector(def.sel);
@@ -323,4 +324,133 @@
   } else {
     document.querySelectorAll('.section-stamp').forEach(function (s) { s.classList.add('is-stamped'); });
   }
+
+  // ─── v3.3 · Live UI tour (Now / Team mock) ──────────────────────────
+  // 1) Apply per-card --rot from data-rotate (attr() in CSS isn't reliable)
+  // 2) Tab switcher (Now ↔ Team) with cross-fade + re-stagger
+  // 3) Section-enter stagger (commit rows / obs cards / member cards)
+  // 4) Mentor inline answer expand on click (data-mentor-toggle)
+  // 5) Typewriter reveal once per panel for mentor answers (first open)
+  (function liveTour() {
+    var tourSection = document.getElementById('ui-tour');
+    if (!tourSection) return;
+
+    // 1 · per-card rotation
+    tourSection.querySelectorAll('[data-rotate]').forEach(function (el) {
+      var v = parseFloat(el.getAttribute('data-rotate'));
+      if (!isNaN(v)) el.style.setProperty('--rot', v);
+    });
+
+    // 2 · tab switcher
+    var tabs = Array.prototype.slice.call(tourSection.querySelectorAll('.exhibit-tab'));
+    var panels = Array.prototype.slice.call(tourSection.querySelectorAll('.exhibit-panel'));
+    // probe support: ?_probe=team activates the team tab on load (used by screenshot QA)
+    var probeMatch = (location.search || '').match(/[?&]_probe=([^&]+)/);
+    var probeTab = probeMatch ? probeMatch[1] : null;
+    function activateTab(name) {
+      tabs.forEach(function (t) {
+        var isActive = t.getAttribute('data-tab') === name;
+        t.classList.toggle('is-active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      panels.forEach(function (p) {
+        var match = p.getAttribute('data-tab-panel') === name;
+        if (match) {
+          p.hidden = false;
+          // restart enter animation by replaying class
+          p.classList.remove('is-active');
+          // force reflow so animation restarts
+          // eslint-disable-next-line no-unused-expressions
+          void p.offsetWidth;
+          p.classList.add('is-active');
+        } else {
+          p.classList.remove('is-active');
+          // delay hide a beat so cross-fade looks smooth
+          setTimeout(function () {
+            if (!p.classList.contains('is-active')) p.hidden = true;
+          }, 280);
+        }
+      });
+    }
+    // honor probe query param
+    if (probeTab) {
+      var probeMatchEl = tabs.find(function (t) { return t.getAttribute('data-tab') === probeTab; });
+      if (probeMatchEl) activateTab(probeTab);
+    }
+
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () {
+        activateTab(t.getAttribute('data-tab'));
+      });
+      t.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
+        ev.preventDefault();
+        var idx = tabs.indexOf(t);
+        var next = ev.key === 'ArrowRight' ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length;
+        tabs[next].focus();
+        activateTab(tabs[next].getAttribute('data-tab'));
+      });
+    });
+
+    // 3 · section-enter stagger
+    if (!prefersReduced && 'IntersectionObserver' in window) {
+      var tourIO = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          tourSection.classList.add('is-in');
+          // also mark direct stagger groups (commit-rows / now-cards / team-cards)
+          tourSection.querySelectorAll('.commit-rows, .now-cards, .team-cards').forEach(function (g) {
+            g.classList.add('is-in');
+          });
+          tourIO.unobserve(tourSection);
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -8% 0px' });
+      tourIO.observe(tourSection);
+    } else {
+      tourSection.classList.add('is-in');
+      tourSection.querySelectorAll('.commit-rows, .now-cards, .team-cards').forEach(function (g) {
+        g.classList.add('is-in');
+      });
+    }
+
+    // 4 + 5 · mentor toggle with typewriter
+    tourSection.querySelectorAll('[data-mentor-toggle]').forEach(function (btn) {
+      var container = btn.closest('.obs-card, .member-card');
+      if (!container) return;
+      var mentor = container.querySelector('.obs-mentor');
+      if (!mentor) return;
+      var body = mentor.querySelector('[data-typewriter]');
+      btn.setAttribute('aria-expanded', 'false');
+
+      btn.addEventListener('click', function () {
+        var isOpen = mentor.hasAttribute('data-open');
+        if (isOpen) {
+          mentor.removeAttribute('data-open');
+          btn.setAttribute('aria-expanded', 'false');
+          return;
+        }
+        // ensure hidden attribute removed (we use display:grid via CSS)
+        mentor.removeAttribute('hidden');
+        mentor.setAttribute('data-open', '');
+        btn.setAttribute('aria-expanded', 'true');
+
+        // typewriter once
+        if (body && !body.dataset.typed) {
+          body.dataset.typed = '1';
+          if (prefersReduced) return;
+          var full = body.textContent;
+          body.textContent = '';
+          var i = 0;
+          function type() {
+            if (i >= full.length) return;
+            body.textContent = full.slice(0, ++i);
+            var jitter = 16 + Math.random() * 18;
+            setTimeout(type, jitter);
+          }
+          // small lead-in so the panel reveal finishes first
+          setTimeout(type, 260);
+        }
+      });
+    });
+  })();
 })();

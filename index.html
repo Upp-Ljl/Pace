@@ -26,7 +26,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" />
 
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=9" />
 </head>
 <body>
 
@@ -85,6 +85,7 @@
       <nav class="docket-nav" aria-label="主导航">
         <a href="#how-it-works">怎么读</a>
         <a href="#watch">看一眼</a>
+        <a href="#ui-tour">活样本</a>
         <a href="#promises">不变的事</a>
         <a href="https://github.com/" target="_blank" rel="noopener noreferrer">GitHub</a>
         <a class="docket-cta" href="#download">↓ 下载</a>
@@ -394,11 +395,301 @@
 
     <hr class="section-rule" />
 
+    <!-- ─────────────────────────────────────────────────── Live UI tour · Now + Team mock (dossier-skinned) -->
+    <section class="exhibits-live" id="ui-tour" aria-labelledby="tour-h2">
+      <div class="container">
+        <div class="case-label">
+          <span class="case-num">案卷 · 05</span>
+          <span class="case-slug">活样本 · 那两个 tab 你没看到</span>
+        </div>
+        <h2 class="case-title" id="tour-h2">看带没看到的：<em class="accent-em">现在</em> 和 <em class="accent-em">团队</em>。</h2>
+        <p class="case-summary">视频只占 117 秒，剩下两个 tab 没机会展开。下面是它们的活样本——切换、hover 一下看 Pace 怎么读、怎么开口。</p>
+
+        <!-- Tab switcher -->
+        <div class="exhibit-tabs" role="tablist" aria-label="Pace UI 活样本">
+          <button class="exhibit-tab is-active" data-tab="now" role="tab" aria-selected="true" id="tab-now" aria-controls="panel-now" type="button">
+            <span class="tab-num">01</span>
+            <span class="tab-label">现在 · Now</span>
+            <span class="tab-meta">commit + 观察卡</span>
+          </button>
+          <button class="exhibit-tab" data-tab="team" role="tab" aria-selected="false" id="tab-team" aria-controls="panel-team" type="button">
+            <span class="tab-num">02</span>
+            <span class="tab-label">团队 · Team</span>
+            <span class="tab-meta">RACI · 沟通偏好</span>
+          </button>
+          <span class="exhibit-tabs-meta">活样本 · 非真截图 · 用 dossier 笔触画</span>
+        </div>
+
+        <div class="exhibit-stage" data-tab-host>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━ Now tab panel -->
+          <div class="exhibit-panel is-active" data-tab-panel="now" id="panel-now" role="tabpanel" aria-labelledby="tab-now">
+
+            <!-- Commit pane (mock) -->
+            <article class="now-commits" data-stagger>
+              <header class="now-commits-head">
+                <span class="now-commits-title">最近 5 次 提交</span>
+                <span class="now-commits-meta">~/lll/pace · main · 落后 origin 5</span>
+              </header>
+              <ol class="commit-rows">
+                <li class="commit-row" style="--row-i:0">
+                  <span class="commit-hash">9c7e255</span>
+                  <span class="commit-time">12 min</span>
+                  <span class="commit-subj">feat(landing v3.2)：案卷 04 · 嵌 pace-demo.mp4 + F/G/I dossier 特效</span>
+                  <span class="pmp-chip pmp-chip-red" aria-label="PMP 阶段">收尾</span>
+                </li>
+                <li class="commit-row" style="--row-i:1">
+                  <span class="commit-hash">a4eee3f</span>
+                  <span class="commit-time">1 h</span>
+                  <span class="commit-subj">fix(landing v3.1)：sticky docket z-index 60 + dossier background animations</span>
+                  <span class="pmp-chip pmp-chip-red" aria-label="PMP 阶段">收尾</span>
+                </li>
+                <li class="commit-row" style="--row-i:2">
+                  <span class="commit-hash">bf63eb1</span>
+                  <span class="commit-time">2 h</span>
+                  <span class="commit-subj">feat(landing v3)：Claude Design「Evidence / Dossier」方向交付</span>
+                  <span class="pmp-chip pmp-chip-gold" aria-label="PMP 阶段">推进</span>
+                </li>
+                <li class="commit-row" style="--row-i:3">
+                  <span class="commit-hash">3378bf6</span>
+                  <span class="commit-time">3 h</span>
+                  <span class="commit-subj">feat(video)：v4.1 mp4 final — aesthetic-review 8.4/10 PASS</span>
+                  <span class="pmp-chip pmp-chip-gold" aria-label="PMP 阶段">推进</span>
+                </li>
+                <li class="commit-row" style="--row-i:4">
+                  <span class="commit-hash">28ebe62</span>
+                  <span class="commit-time">5 h</span>
+                  <span class="commit-subj">feat(landing v2)：推翻 ea2913c + 7 处说辞 patch + 视频 v4 准备物</span>
+                  <span class="pmp-chip pmp-chip-gold" aria-label="PMP 阶段">推进</span>
+                </li>
+              </ol>
+              <div class="commit-digest">
+                最近 5 个 commit 多在 <em>收尾活 · 跨度 3 小时</em>
+                <span aria-hidden="true">·</span>
+                共 47 文件 · 5 个未 push
+              </div>
+            </article>
+
+            <!-- Observation cards -->
+            <div class="now-cards" data-stagger role="list">
+              <article class="obs-card obs-card-warn" data-rotate="-0.4" role="listitem">
+                <span class="obs-card-icon" aria-hidden="true">⏳</span>
+                <h3 class="obs-card-h">上次 commit 是 47 分钟前</h3>
+                <p class="obs-card-p">你停笔但没收口。一般这个时候 cc 在 streaming 卡住，或者你在等什么人回话。</p>
+                <button class="obs-card-link" type="button" data-mentor-toggle>
+                  <span class="obs-card-link-text">想看建议</span>
+                  <span class="obs-card-link-arrow" aria-hidden="true">→</span>
+                </button>
+                <div class="obs-mentor" hidden>
+                  <span class="obs-mentor-tag">PACE · 一句</span>
+                  <p class="obs-mentor-body" data-typewriter>「写 47 分钟没动 git 不奇怪。但你 main 上裸改 12 个文件——先 stash 出去开个 branch，再继续，丢东西的概率小一半。」</p>
+                </div>
+              </article>
+
+              <article class="obs-card obs-card-warn" data-rotate="0.35" role="listitem">
+                <span class="obs-card-icon" aria-hidden="true">🌲</span>
+                <h3 class="obs-card-h">你在 main 上裸改 · 还没建分支</h3>
+                <p class="obs-card-p">12 个未提交改动全在 main。Tom 早上 push 过 v2 schema，下个 git pull 会有冲突要处理。</p>
+                <button class="obs-card-link" type="button" data-mentor-toggle>
+                  <span class="obs-card-link-text">想看建议</span>
+                  <span class="obs-card-link-arrow" aria-hidden="true">→</span>
+                </button>
+                <div class="obs-mentor" hidden>
+                  <span class="obs-mentor-tag">PACE · 一句</span>
+                  <p class="obs-mentor-body" data-typewriter>「`git switch -c export/streaming` 然后把这 12 个挪过去。下次 pull 出来的不是冲突是 fast-forward。」</p>
+                </div>
+              </article>
+
+              <article class="obs-card obs-card-info" data-rotate="-0.25" role="listitem">
+                <span class="obs-card-icon" aria-hidden="true">📤</span>
+                <h3 class="obs-card-h">5 个 commit 没 push · origin 落后</h3>
+                <p class="obs-card-p">本地领先 origin/main 5 个 commit。CI 看不到你的活，code review 也排不上队。</p>
+                <button class="obs-card-link" type="button" data-mentor-toggle>
+                  <span class="obs-card-link-text">想看建议</span>
+                  <span class="obs-card-link-arrow" aria-hidden="true">→</span>
+                </button>
+                <div class="obs-mentor" hidden>
+                  <span class="obs-mentor-tag">PACE · 一句</span>
+                  <p class="obs-mentor-body" data-typewriter>「先 push 出去——就算还没 ready for review，至少 CI 跑起来。等收尾活做完才 push，等于让你的同事再多猜 3 小时。」</p>
+                </div>
+              </article>
+
+              <article class="obs-card obs-card-good" data-rotate="0.5" role="listitem">
+                <span class="obs-card-icon" aria-hidden="true">📝</span>
+                <h3 class="obs-card-h">最近 5 个 commit 都在改 UI · 一个专注迭代</h3>
+                <p class="obs-card-p">subject 都围 landing / dossier / theatre。这种迭代是好事——但记得跟设计 ping 一声进度。</p>
+                <button class="obs-card-link" type="button" data-mentor-toggle>
+                  <span class="obs-card-link-text">想看建议</span>
+                  <span class="obs-card-link-arrow" aria-hidden="true">→</span>
+                </button>
+                <div class="obs-mentor" hidden>
+                  <span class="obs-mentor-tag">PACE · 一句</span>
+                  <p class="obs-mentor-body" data-typewriter>「阿珍周二有评审，把 v3.2 的两张截图发她 — 让她在评审前就知道你在调，免得她周一另起一稿。」</p>
+                </div>
+              </article>
+            </div>
+
+          </div>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━ Team tab panel -->
+          <div class="exhibit-panel" data-tab-panel="team" id="panel-team" role="tabpanel" aria-labelledby="tab-team" hidden>
+
+            <header class="team-mock-head">
+              <span class="team-mock-title">这个项目里 你登记的同事</span>
+              <span class="team-mock-meta">3 位 · RACI 全齐 · 1 个待响应</span>
+            </header>
+
+            <div class="team-cards" data-stagger role="list">
+              <!-- Member 1 · 晓婷 PM -->
+              <article class="member-card" data-rotate="-0.45" role="listitem">
+                <header class="member-card-head">
+                  <span class="member-avatar member-avatar-gold" aria-hidden="true">晓婷</span>
+                  <div class="member-id">
+                    <div class="member-name">晓婷</div>
+                    <div class="member-role">PM · 产品经理</div>
+                  </div>
+                  <span class="member-raci raci-A" aria-label="RACI: A 批准">A</span>
+                </header>
+                <dl class="member-meta">
+                  <div class="member-meta-row">
+                    <dt>RACI</dt>
+                    <dd><em class="member-raci-label">A · 批准</em>—这事得她点头</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>Agent</dt>
+                    <dd><code>claude-mentor-1</code> · slack:@xiaoting</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>偏好</dt>
+                    <dd>先文字后会议 · 早会前发要点</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>近态</dt>
+                    <dd><span class="member-pulse"></span>2 h 前在 RFC 里 @ 过你</dd>
+                  </div>
+                </dl>
+                <div class="member-actions">
+                  <button class="member-ping" type="button" data-mentor-toggle>
+                    <span aria-hidden="true">💬</span>
+                    <span class="member-ping-text">找她聊</span>
+                  </button>
+                  <button class="member-as" type="button">
+                    <span aria-hidden="true">🪞</span>
+                    <span>用她视角问</span>
+                  </button>
+                </div>
+                <div class="obs-mentor" hidden>
+                  <span class="obs-mentor-tag">PACE · 一句</span>
+                  <p class="obs-mentor-body" data-typewriter>「晓婷今天 14:30 之前会过一遍 RFC。把『export contract 改动』那段先发她——她拍板的话你这周收尾就稳了。」</p>
+                </div>
+              </article>
+
+              <!-- Member 2 · Tom Eng -->
+              <article class="member-card" data-rotate="0.3" role="listitem">
+                <header class="member-card-head">
+                  <span class="member-avatar member-avatar-gold" aria-hidden="true">To</span>
+                  <div class="member-id">
+                    <div class="member-name">Tom</div>
+                    <div class="member-role">Eng · 后端</div>
+                  </div>
+                  <span class="member-raci raci-R" aria-label="RACI: R 负责">R</span>
+                </header>
+                <dl class="member-meta">
+                  <div class="member-meta-row">
+                    <dt>RACI</dt>
+                    <dd><em class="member-raci-label">R · 负责</em>—IPC / cc 集成主负责</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>Agent</dt>
+                    <dd><code>codex-cli-2</code> · github:@tomliu</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>偏好</dt>
+                    <dd>直说 · 截图带 commit sha · 不开会</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>近态</dt>
+                    <dd><span class="member-pulse member-pulse-warn"></span>14:00 / 16:00 有空档</dd>
+                  </div>
+                </dl>
+                <div class="member-actions">
+                  <button class="member-ping" type="button" data-mentor-toggle>
+                    <span aria-hidden="true">💬</span>
+                    <span class="member-ping-text">找他聊</span>
+                  </button>
+                  <button class="member-as" type="button">
+                    <span aria-hidden="true">🪞</span>
+                    <span>用他视角问</span>
+                  </button>
+                </div>
+                <div class="obs-mentor" hidden>
+                  <span class="obs-mentor-tag">PACE · 一句</span>
+                  <p class="obs-mentor-body" data-typewriter>「Tom，IPC 改动我动到 streaming 那块了。14:00 抽你 15 分钟对一下 error code 语义——我这周想 PR，需要你点头。」</p>
+                </div>
+              </article>
+
+              <!-- Member 3 · 阿珍 Designer -->
+              <article class="member-card" data-rotate="-0.3" role="listitem">
+                <header class="member-card-head">
+                  <span class="member-avatar member-avatar-gold" aria-hidden="true">阿珍</span>
+                  <div class="member-id">
+                    <div class="member-name">阿珍</div>
+                    <div class="member-role">Designer · 设计</div>
+                  </div>
+                  <span class="member-raci raci-C" aria-label="RACI: C 咨询">C</span>
+                </header>
+                <dl class="member-meta">
+                  <div class="member-meta-row">
+                    <dt>RACI</dt>
+                    <dd><em class="member-raci-label">C · 咨询</em>—视觉决策她拍</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>Agent</dt>
+                    <dd><code>gemini-design</code> · figma:@azhen</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>偏好</dt>
+                    <dd>截图先于文字 · 不爱被 ping 微信</dd>
+                  </div>
+                  <div class="member-meta-row">
+                    <dt>近态</dt>
+                    <dd><span class="member-pulse"></span>周二 11:00 设计评审</dd>
+                  </div>
+                </dl>
+                <div class="member-actions">
+                  <button class="member-ping" type="button" data-mentor-toggle>
+                    <span aria-hidden="true">💬</span>
+                    <span class="member-ping-text">找她聊</span>
+                  </button>
+                  <button class="member-as" type="button">
+                    <span aria-hidden="true">🪞</span>
+                    <span>用她视角问</span>
+                  </button>
+                </div>
+                <div class="obs-mentor" hidden>
+                  <span class="obs-mentor-tag">PACE · 一句</span>
+                  <p class="obs-mentor-body" data-typewriter>「阿珍周二评审。今晚发她 2 张 v3.2 截图 + 一行『红印章 + 奶油底已经在了』——让她评审前就有 anchor，别现场推翻。」</p>
+                </div>
+              </article>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="exhibits-live-foot">
+          <span class="elf-mark" aria-hidden="true">●</span>
+          上面两个 tab 都是 dossier 风改造的活样本。真 Pace 跑起来是深色面板，行为一致——本地、被动、不上传。
+        </div>
+      </div>
+    </section>
+
+    <hr class="section-rule" />
+
     <!-- ─────────────────────────────────────────────────── Sworn / promises -->
     <section class="promises" id="promises" aria-labelledby="promises-h2">
       <div class="container">
         <div class="case-label">
-          <span class="case-num">不可撤销 · 05</span>
+          <span class="case-num">不可撤销 · 06</span>
           <span class="case-slug">v1 不会让步的五条</span>
         </div>
         <h2 class="case-title" id="promises-h2">5 件不可撤销的事。</h2>
@@ -498,6 +789,6 @@
     </div>
   </footer>
 
-  <script src="script.js?v=7" defer></script>
+  <script src="script.js?v=8" defer></script>
 </body>
 </html>
