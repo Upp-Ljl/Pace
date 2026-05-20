@@ -9,6 +9,25 @@
   var prefersReduced = window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  // ─── v3.5 P1 · Lenis 整页惯性滚动 ─────────────────────────────────────
+  // CDN script loaded with defer in <head>. Lenis is透明代理 window.scroll —
+  // 现有 IntersectionObserver / scroll handlers 不需要改动。
+  // reduced-motion: 不初始化, 走原生滚动 (没有 lenis 全局).
+  if (!prefersReduced && typeof window.Lenis === 'function') {
+    try {
+      var lenis = new window.Lenis({
+        lerp: 0.1,
+        duration: 1.2,
+        smoothWheel: true,
+        wheelMultiplier: 1,
+        touchMultiplier: 1.5,
+      });
+      window.lenis = lenis; // expose for review verification
+      function lenisRaf(t) { lenis.raf(t); requestAnimationFrame(lenisRaf); }
+      requestAnimationFrame(lenisRaf);
+    } catch (e) { /* Lenis 初始化失败不致命, 退化到原生滚动 */ }
+  }
+
   // ─── Mark targets for reveal & assign stagger indices ───────────────
   // Each "group" gets its own per-child --reveal-d so siblings stagger
   // independently (exhibits within a case, voices within a row, etc).
@@ -311,7 +330,12 @@
     sec.insertBefore(s, sec.firstChild);
   });
 
-  if (!prefersReduced && 'IntersectionObserver' in window) {
+  // v3.5 P3 · scroll-timeline takes over when supported — skip IO 旁路.
+  // CSS @supports (animation-timeline: view()) 块 drive scroll-tied reveal.
+  // Else 走 IO 旧路 (Chrome <115 / Safari <17 / Firefox flag-off).
+  var supportsScrollTimeline = (typeof CSS !== 'undefined') &&
+    CSS.supports && CSS.supports('animation-timeline', 'view()');
+  if (!prefersReduced && !supportsScrollTimeline && 'IntersectionObserver' in window) {
     var stampIO = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (entry.isIntersecting) {
@@ -321,26 +345,59 @@
       });
     }, { threshold: 0.14, rootMargin: '0px 0px -4% 0px' });
     document.querySelectorAll('.section-stamp').forEach(function (s) { stampIO.observe(s); });
-  } else {
+  } else if (prefersReduced || !supportsScrollTimeline) {
     document.querySelectorAll('.section-stamp').forEach(function (s) { s.classList.add('is-stamped'); });
   }
+  // When supportsScrollTimeline === true and motion is OK, CSS handles it; no JS needed.
 
-  // ─── v3.4 · B3 · section-title red-line underline (scroll trigger) ──
-  // Inject a red rule under every <h2.case-title> + .hero-h1 + .download-h
-  // The line draws from left → right (scaleX 0 → 1) the first time the
-  // heading crosses ~14% into the viewport. Pure transform; GPU-friendly.
+  // ─── v3.5 P4 · SVG stroke-dashoffset red-line draw-in (案 v3.4 B3 升级) ──
+  // 替换原 CSS scaleX 红线为 SVG path stroke-dashoffset draw-in (更编辑感 / Substack 风).
+  // 红→金渐变路径, dasharray=220 → dashoffset 220→0 真"画"出来.
+  // 仍然 IO 触发 .is-underlined → CSS 跑 keyframes.
   var underlineHeadings = document.querySelectorAll(
     '.case-title, .download-h, .affirmation-body'
   );
+  var SVG_NS = 'http://www.w3.org/2000/svg';
   underlineHeadings.forEach(function (h) {
     // Don't double-inject
     if (h.classList.contains('has-underline-fx')) return;
     h.classList.add('has-underline-fx');
-    // Inject the underline element. CSS draws + animates it.
-    var u = document.createElement('span');
-    u.className = 'title-underline-fx';
-    u.setAttribute('aria-hidden', 'true');
-    h.appendChild(u);
+    // Inject SVG underline (replaces v3.4 .title-underline-fx span).
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'title-underline-fx');
+    svg.setAttribute('viewBox', '0 0 200 6');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    // Gradient defs (red → gold)
+    var defs = document.createElementNS(SVG_NS, 'defs');
+    var grad = document.createElementNS(SVG_NS, 'linearGradient');
+    var gradId = 'titleRedGold-' + Math.random().toString(36).slice(2, 8);
+    grad.setAttribute('id', gradId);
+    grad.setAttribute('x1', '0'); grad.setAttribute('x2', '1');
+    grad.setAttribute('y1', '0'); grad.setAttribute('y2', '0');
+    var s1 = document.createElementNS(SVG_NS, 'stop');
+    s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', '#b2382b');
+    var s2 = document.createElementNS(SVG_NS, 'stop');
+    s2.setAttribute('offset', '78%'); s2.setAttribute('stop-color', '#b2382b');
+    var s3 = document.createElementNS(SVG_NS, 'stop');
+    s3.setAttribute('offset', '100%'); s3.setAttribute('stop-color', '#c8a86a');
+    grad.appendChild(s1); grad.appendChild(s2); grad.appendChild(s3);
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+    // Path · subtle curve so it reads hand-drawn, not ruler-straight.
+    var path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', 'M0 3 Q100 0 200 3');
+    path.setAttribute('stroke', 'url(#' + gradId + ')');
+    path.setAttribute('stroke-width', '2.5');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('vector-effect', 'non-scaling-stroke');
+    // dasharray = path length approx (Q-curve over 200 ≈ 200-ish; over-allocate to 220)
+    path.setAttribute('stroke-dasharray', '220');
+    path.setAttribute('stroke-dashoffset', '220');
+    svg.appendChild(path);
+    h.appendChild(svg);
   });
 
   if (!prefersReduced && 'IntersectionObserver' in window) {
@@ -571,10 +628,34 @@
       }).catch(function () { /* noop */ });
     }
 
+    // v3.5 P2 · View Transitions API wrap — 浏览器自动 FLIP morph
+    // 红章戳 (.exhibit-tab-seal) 已经标 view-transition-name: seal (in CSS).
+    // 浏览器原生测算起止位置 + morph, 比手写更稳.
+    // 不支持的浏览器 fallback 现有 v3.4.1 drawer slide (legacy path).
+    function tabSwitch(name) {
+      var supportsVT = typeof document.startViewTransition === 'function' && !prefersReduced;
+      if (!supportsVT) {
+        // fallback: v3.4.1 drawer slide (legacy)
+        activateTab(name);
+        return;
+      }
+      try {
+        var t = document.startViewTransition(function () {
+          activateTab(name);
+        });
+        // expose promise for review CDP verification
+        if (t && t.finished && typeof t.finished.then === 'function') {
+          t.finished.catch(function () { /* user cancel / skip — ignore */ });
+        }
+      } catch (e) {
+        activateTab(name); // any failure → fallback
+      }
+    }
+
     tabs.forEach(function (t) {
       t.addEventListener('click', function () {
         if (t.classList.contains('is-active')) return; // skip click on already-active
-        activateTab(t.getAttribute('data-tab'));
+        tabSwitch(t.getAttribute('data-tab'));
       });
       t.addEventListener('keydown', function (ev) {
         if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
@@ -582,7 +663,7 @@
         var idx = tabs.indexOf(t);
         var next = ev.key === 'ArrowRight' ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length;
         tabs[next].focus();
-        activateTab(tabs[next].getAttribute('data-tab'));
+        tabSwitch(tabs[next].getAttribute('data-tab'));
       });
     });
 
