@@ -683,7 +683,11 @@
       tourIO.observe(tourSection);
 
       // 3b · v3.4.1 drawer slide-in — stage opens from RIGHT like a Pace dock
-      // Higher threshold (0.3) so the user is actually looking at it when it fires.
+      // v3.5.1 修复"用户没看到抽屉滑入":
+      //   - threshold 0.3 → 0.01: stage 顶端**刚露出视口**就触发 (而不是 30% 才触发)
+      //   - rootMargin 0px 0px 0px 0px: 不偏移触发区域
+      //   - 配合 CSS 把 keyframes 时长从 0.82s 改 1.2s + signature easing,
+      //     用户继续往下滚的同时, 1.2s 抽屉从右边 60% 慢滑到位 — 真正"看见"
       if (stage) {
         var drawerIO = new IntersectionObserver(function (entries) {
           entries.forEach(function (entry) {
@@ -691,7 +695,7 @@
             stage.classList.add('is-drawer-in');
             drawerIO.unobserve(stage);
           });
-        }, { threshold: 0.3, rootMargin: '0px 0px -4% 0px' });
+        }, { threshold: 0.01, rootMargin: '0px' });
         drawerIO.observe(stage);
       }
     } else {

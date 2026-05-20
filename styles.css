@@ -2645,12 +2645,17 @@ main, .footer { position: relative; z-index: 3; }
     -20px 0 60px -20px rgba(0, 0, 0, 0.2);
   will-change: transform, opacity;
 }
+/* v3.5.1 · 延长抽屉滑入 0.82s → 1.2s 并改用 signature easing,
+   关键: 前 35% 抽屉走 35% 距离 (用户能看见过程),
+   不再像 ease-out 那样开头就甩到 90% 然后慢慢收尾 */
 .exhibit-stage.is-drawer-in {
-  animation: stageDrawerIn 0.82s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  animation: stageDrawerIn 1.2s var(--ease-signature, cubic-bezier(0.2, 1, 0.2, 1)) forwards;
 }
 @keyframes stageDrawerIn {
   0%   { transform: translateX(60%); opacity: 0; }
-  60%  { opacity: 1; }
+  15%  { opacity: 0.4; }
+  40%  { transform: translateX(36%); opacity: 0.8; }
+  70%  { transform: translateX(8%); opacity: 1; }
   100% { transform: translateX(0);   opacity: 1; }
 }
 
