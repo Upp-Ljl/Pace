@@ -2548,3 +2548,357 @@ main, .footer { position: relative; z-index: 3; }
   .exhibit-tab:hover { transform: none !important; }
 }
 
+/* ============================================================
+   v3.4 · Dossier switch FX
+   A1 · case-file fold (perspective rotateY)
+   A2 · red 章戳 indicator slides between tabs + pulse on land
+   A4 · 案卷夹合上打开 — twin flaps cinch over stage between tabs
+   B3 · section-title red-line wipe (scroll-trigger scaleX 0→1)
+   All transform/opacity — GPU composited. Reduced-motion fallback at end.
+   ============================================================ */
+
+/* ─── A1 · Stage 3D perspective + fold panel ───────────────── */
+.exhibit-stage {
+  /* Give the panel room to rotate without clipping */
+  perspective: 1200px;
+  perspective-origin: 50% 35%;
+  overflow: hidden; /* clip the flap + 3D edges cleanly */
+}
+
+.exhibit-panel {
+  /* Preserve 3D so rotateY composites with the parent perspective */
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-origin: 0% 50%; /* hinge on left edge — like a case file flap */
+  will-change: transform, opacity;
+}
+
+/* During tab switch: outgoing panel folds away to the LEFT (rotateY -90deg).
+   Override the v3.3 cross-fade with a sharper fold using transform. */
+.exhibit-panel.is-folding-out {
+  animation: panelFoldOut 0.22s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  pointer-events: none;
+}
+.exhibit-panel.is-folding-in {
+  animation: panelFoldIn 0.36s cubic-bezier(0.20, 0.7, 0.20, 1) forwards;
+}
+
+@keyframes panelFoldOut {
+  0%   {
+    opacity: 1;
+    transform: perspective(1200px) rotateY(0deg) translateZ(0) translateY(0);
+    filter: brightness(1);
+  }
+  100% {
+    opacity: 0;
+    transform: perspective(1200px) rotateY(-72deg) translateZ(-40px) translateY(0);
+    filter: brightness(0.78);
+  }
+}
+@keyframes panelFoldIn {
+  0%   {
+    opacity: 0;
+    transform: perspective(1200px) rotateY(72deg) translateZ(-30px) translateY(0);
+    filter: brightness(0.85);
+  }
+  55%  {
+    opacity: 1;
+    transform: perspective(1200px) rotateY(-4deg) translateZ(6px) translateY(0);
+    filter: brightness(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(1200px) rotateY(0deg) translateZ(0) translateY(0);
+    filter: brightness(1);
+  }
+}
+
+/* Paper-crease shadow that sweeps across the panel as it folds — A1 polish */
+.exhibit-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    transparent 28%,
+    rgba(20, 12, 8, 0.18) 40%,
+    rgba(20, 12, 8, 0.08) 48%,
+    transparent 60%,
+    transparent 100%
+  );
+  opacity: 0;
+  transform: translateX(-30%);
+  mix-blend-mode: multiply;
+}
+.exhibit-panel.is-folding-out::before {
+  animation: panelCreaseOut 0.22s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.exhibit-panel.is-folding-in::before {
+  animation: panelCreaseIn 0.36s cubic-bezier(0.20, 0.7, 0.20, 1) forwards;
+}
+@keyframes panelCreaseOut {
+  0%   { opacity: 0; transform: translateX(-30%); }
+  60%  { opacity: 0.85; transform: translateX(30%); }
+  100% { opacity: 0; transform: translateX(80%); }
+}
+@keyframes panelCreaseIn {
+  0%   { opacity: 0; transform: translateX(80%); }
+  35%  { opacity: 0.55; transform: translateX(30%); }
+  100% { opacity: 0; transform: translateX(-30%); }
+}
+
+/* ─── A2 · Red 章戳 sliding indicator (under active tab) ──── */
+.exhibit-tabs {
+  position: relative; /* anchor for the seal */
+  z-index: 10; /* sit above the stage so the seal drop-shadow + 章戳 isn't covered */
+}
+.exhibit-tab-seal {
+  position: absolute;
+  left: 0; bottom: 0;
+  /* Sit half-overlapping the bottom edge of the tab strip for "stamped" feel */
+  transform: translate(calc(var(--seal-x, 0px) - 50%), calc(50% - 2px)) rotate(-8deg);
+  width: 56px; height: 56px;
+  pointer-events: none;
+  z-index: 5;
+  transition: transform 0.42s cubic-bezier(0.7, -0.05, 0.25, 1.05);
+  display: flex; align-items: center; justify-content: center;
+  /* Faint paper texture under the seal so it reads "pressed in" */
+  filter: drop-shadow(0 2px 3px rgba(140, 44, 34, 0.35));
+}
+.exhibit-tab-seal .seal-ring {
+  position: absolute; inset: 0;
+  border: 2.5px solid var(--accent-red);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 35%, rgba(178, 56, 43, 0.10) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 70% 65%, rgba(178, 56, 43, 0.08) 0 0.8px, transparent 1.3px),
+    radial-gradient(circle at 50% 80%, rgba(178, 56, 43, 0.08) 0 0.6px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgba(255, 244, 220, 0.55), rgba(252, 240, 210, 0.35));
+  box-shadow:
+    inset 0 0 0 2.5px rgba(178, 56, 43, 0.28),
+    inset 0 0 8px rgba(178, 56, 43, 0.15);
+}
+.exhibit-tab-seal .seal-text {
+  position: relative;
+  font-family: var(--mono);
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: var(--accent-red);
+  text-shadow: 0.4px 0.4px 0 rgba(178, 56, 43, 0.32);
+  line-height: 1;
+}
+.exhibit-tab-seal .seal-sub {
+  position: absolute;
+  bottom: 9px; left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 6px;
+  letter-spacing: 0.18em;
+  color: var(--accent-red);
+  opacity: 0;
+  white-space: nowrap;
+}
+.exhibit-tab-seal.is-pulsing {
+  animation: sealLand 0.36s cubic-bezier(0.34, 1.56, 0.45, 1) forwards;
+}
+.exhibit-tab-seal.is-pulsing .seal-sub {
+  animation: sealSubFlash 0.7s ease-out forwards;
+  animation-delay: 0.32s;
+}
+@keyframes sealLand {
+  0%   { transform: translate(calc(var(--seal-x, 0px) - 50%), calc(50% - 2px)) rotate(-8deg) scale(1); }
+  40%  { transform: translate(calc(var(--seal-x, 0px) - 50%), calc(50% - 6px)) rotate(-12deg) scale(1.18); }
+  70%  { transform: translate(calc(var(--seal-x, 0px) - 50%), calc(50% - 1px)) rotate(-6deg) scale(0.94); }
+  100% { transform: translate(calc(var(--seal-x, 0px) - 50%), calc(50% - 2px)) rotate(-8deg) scale(1); }
+}
+@keyframes sealSubFlash {
+  0%   { opacity: 0; transform: translate(-50%, 0); }
+  20%  { opacity: 1; transform: translate(-50%, -1px); }
+  70%  { opacity: 1; transform: translate(-50%, -1px); }
+  100% { opacity: 0; transform: translate(-50%, -3px); }
+}
+
+/* ─── A4 · 案卷夹合上打开 (twin-flap close/open over stage) ── */
+.exhibit-folder-flap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0;
+  display: none; /* only painted while flapping */
+}
+.exhibit-folder-flap.is-flapping {
+  display: block;
+  opacity: 1;
+}
+.exhibit-folder-flap .flap-top,
+.exhibit-folder-flap .flap-bot {
+  position: absolute;
+  left: 0; right: 0;
+  height: 50%;
+  /* Paper-tone gradient so flaps look like the case-file cover, not solid red */
+  background:
+    linear-gradient(180deg,
+      rgba(252, 240, 210, 0.98) 0%,
+      rgba(245, 232, 200, 0.96) 60%,
+      rgba(228, 212, 178, 0.94) 100%);
+  /* Faint paper grain — same family as page bg */
+  box-shadow:
+    inset 0 0 0 1px rgba(178, 56, 43, 0.22),
+    0 6px 16px -8px rgba(70, 50, 24, 0.45);
+  will-change: transform;
+}
+.exhibit-folder-flap .flap-top {
+  top: 0;
+  transform: translateY(-100%);
+  border-bottom: 1.5px solid var(--accent-red);
+}
+.exhibit-folder-flap .flap-bot {
+  bottom: 0;
+  transform: translateY(100%);
+  border-top: 1.5px solid var(--accent-red);
+}
+.exhibit-folder-flap .flap-rule {
+  /* Hairline accent ribbon that lands at the seam mid-frame */
+  position: absolute;
+  left: 0; right: 0; top: calc(50% - 1px);
+  height: 2px;
+  background: var(--accent-red);
+  opacity: 0;
+  transform: scaleX(0.2);
+  transform-origin: center;
+}
+.exhibit-folder-flap.is-flapping .flap-top {
+  animation: flapTop 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.exhibit-folder-flap.is-flapping .flap-bot {
+  animation: flapBot 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.exhibit-folder-flap.is-flapping .flap-rule {
+  animation: flapRule 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes flapTop {
+  0%   { transform: translateY(-100%); }
+  45%  { transform: translateY(0%); }
+  55%  { transform: translateY(0%); }
+  100% { transform: translateY(-100%); }
+}
+@keyframes flapBot {
+  0%   { transform: translateY(100%); }
+  45%  { transform: translateY(0%); }
+  55%  { transform: translateY(0%); }
+  100% { transform: translateY(100%); }
+}
+@keyframes flapRule {
+  0%   { opacity: 0; transform: scaleX(0.2); }
+  45%  { opacity: 1; transform: scaleX(1); }
+  55%  { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(0.2); }
+}
+
+/* ─── B3 · Section-title red-line underline (scroll-trigger) ─ */
+.has-underline-fx {
+  position: relative;
+}
+/* Reserve a bit of bottom padding so the underline sits below the type */
+.has-underline-fx .title-underline-fx {
+  position: absolute;
+  left: 0;
+  bottom: -8px;
+  height: 2.5px;
+  width: clamp(48px, 22%, 220px);
+  background: linear-gradient(
+    90deg,
+    var(--accent-red) 0%,
+    var(--accent-red) 78%,
+    var(--gold) 100%
+  );
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0.92;
+  pointer-events: none;
+  border-radius: 1.5px;
+}
+.has-underline-fx.is-underlined .title-underline-fx {
+  animation: titleUnderline 0.6s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation-delay: 0.12s;
+}
+@keyframes titleUnderline {
+  0%   { transform: scaleX(0); opacity: 0.6; }
+  60%  { transform: scaleX(1.05); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0.92; }
+}
+/* The download-h is narrower; size the line for it */
+.download-h.has-underline-fx .title-underline-fx {
+  width: clamp(36px, 35%, 180px);
+}
+/* Affirmation is large display type — center the underline */
+.affirmation-body.has-underline-fx .title-underline-fx {
+  left: 50%;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  width: 96px;
+  bottom: -18px;
+}
+.affirmation-body.has-underline-fx.is-underlined .title-underline-fx {
+  animation: titleUnderlineCenter 0.6s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation-delay: 0.18s;
+}
+@keyframes titleUnderlineCenter {
+  0%   { transform: translateX(-50%) scaleX(0); opacity: 0.6; }
+  60%  { transform: translateX(-50%) scaleX(1.05); opacity: 1; }
+  100% { transform: translateX(-50%) scaleX(1); opacity: 0.92; }
+}
+
+/* ─── v3.4 · Reduced-motion fallback (full bypass) ─────────── */
+@media (prefers-reduced-motion: reduce) {
+  /* A1 · panel fold — no rotation, just snap */
+  .exhibit-panel.is-folding-out,
+  .exhibit-panel.is-folding-in {
+    animation: none !important;
+    transform: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+  }
+  .exhibit-panel::before,
+  .exhibit-panel.is-folding-out::before,
+  .exhibit-panel.is-folding-in::before {
+    animation: none !important;
+    opacity: 0 !important;
+    display: none !important;
+  }
+  /* A2 · seal — static at final position, no pulse */
+  .exhibit-tab-seal {
+    transition: none !important;
+  }
+  .exhibit-tab-seal.is-pulsing,
+  .exhibit-tab-seal.is-pulsing .seal-sub {
+    animation: none !important;
+  }
+  .exhibit-tab-seal .seal-sub { opacity: 0 !important; }
+  /* A4 · folder flaps — never paint */
+  .exhibit-folder-flap,
+  .exhibit-folder-flap.is-flapping,
+  .exhibit-folder-flap .flap-top,
+  .exhibit-folder-flap .flap-bot,
+  .exhibit-folder-flap .flap-rule {
+    animation: none !important;
+    display: none !important;
+    opacity: 0 !important;
+  }
+  /* B3 · title underline — appear instantly at full width */
+  .has-underline-fx .title-underline-fx {
+    animation: none !important;
+    transform: scaleX(1) !important;
+    opacity: 0.92 !important;
+  }
+  .affirmation-body.has-underline-fx .title-underline-fx {
+    transform: translateX(-50%) scaleX(1) !important;
+  }
+}
+

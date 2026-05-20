@@ -325,9 +325,44 @@
     document.querySelectorAll('.section-stamp').forEach(function (s) { s.classList.add('is-stamped'); });
   }
 
+  // ─── v3.4 · B3 · section-title red-line underline (scroll trigger) ──
+  // Inject a red rule under every <h2.case-title> + .hero-h1 + .download-h
+  // The line draws from left → right (scaleX 0 → 1) the first time the
+  // heading crosses ~14% into the viewport. Pure transform; GPU-friendly.
+  var underlineHeadings = document.querySelectorAll(
+    '.case-title, .download-h, .affirmation-body'
+  );
+  underlineHeadings.forEach(function (h) {
+    // Don't double-inject
+    if (h.classList.contains('has-underline-fx')) return;
+    h.classList.add('has-underline-fx');
+    // Inject the underline element. CSS draws + animates it.
+    var u = document.createElement('span');
+    u.className = 'title-underline-fx';
+    u.setAttribute('aria-hidden', 'true');
+    h.appendChild(u);
+  });
+
+  if (!prefersReduced && 'IntersectionObserver' in window) {
+    var ulIO = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-underlined');
+          ulIO.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.34, rootMargin: '0px 0px -8% 0px' });
+    document.querySelectorAll('.has-underline-fx').forEach(function (h) { ulIO.observe(h); });
+  } else {
+    document.querySelectorAll('.has-underline-fx').forEach(function (h) { h.classList.add('is-underlined'); });
+  }
+
   // ─── v3.3 · Live UI tour (Now / Team mock) ──────────────────────────
   // 1) Apply per-card --rot from data-rotate (attr() in CSS isn't reliable)
-  // 2) Tab switcher (Now ↔ Team) with cross-fade + re-stagger
+  // 2) Tab switcher (Now ↔ Team) — v3.4 dossier transitions:
+  //      · A1 case-file fold (perspective 1200 rotateY 0 → ±90deg)
+  //      · A2 red seal indicator slides between tabs + scale pulse
+  //      · A4 "案卷夹合上" closing-folder bar over the stage
   // 3) Section-enter stagger (commit rows / obs cards / member cards)
   // 4) Mentor inline answer expand on click (data-mentor-toggle)
   // 5) Typewriter reveal once per panel for mentor answers (first open)
@@ -344,42 +379,179 @@
     // 2 · tab switcher
     var tabs = Array.prototype.slice.call(tourSection.querySelectorAll('.exhibit-tab'));
     var panels = Array.prototype.slice.call(tourSection.querySelectorAll('.exhibit-panel'));
+    var tabsBar = tourSection.querySelector('.exhibit-tabs');
+    var stage = tourSection.querySelector('.exhibit-stage');
+
+    // A2 · inject the sliding red seal indicator (snaps under active tab)
+    var sealEl = null;
+    if (tabsBar) {
+      sealEl = tabsBar.querySelector('.exhibit-tab-seal');
+      if (!sealEl) {
+        sealEl = document.createElement('span');
+        sealEl.className = 'exhibit-tab-seal';
+        sealEl.setAttribute('aria-hidden', 'true');
+        // SVG-ish 章戳: round, faintly textured, gold core
+        sealEl.innerHTML =
+          '<span class="seal-ring"></span>' +
+          '<span class="seal-text">PACE</span>' +
+          '<span class="seal-sub">已切换</span>';
+        tabsBar.appendChild(sealEl);
+      }
+    }
+
+    // A4 · inject the closing-folder bar (sits on top of stage during transition)
+    var folderEl = null;
+    if (stage) {
+      folderEl = stage.querySelector('.exhibit-folder-flap');
+      if (!folderEl) {
+        folderEl = document.createElement('div');
+        folderEl.className = 'exhibit-folder-flap';
+        folderEl.setAttribute('aria-hidden', 'true');
+        folderEl.innerHTML =
+          '<span class="flap-top"></span>' +
+          '<span class="flap-bot"></span>' +
+          '<span class="flap-rule"></span>';
+        stage.appendChild(folderEl);
+      }
+    }
+
+    // Position the seal indicator under the active tab (uses transform only)
+    function positionSeal(activeTab, withPulse) {
+      if (!sealEl || !tabsBar || !activeTab) return;
+      var barRect = tabsBar.getBoundingClientRect();
+      var rect = activeTab.getBoundingClientRect();
+      // Center the 56×56 seal horizontally under the active tab.
+      var x = (rect.left - barRect.left) + (rect.width / 2);
+      sealEl.style.setProperty('--seal-x', x + 'px');
+      if (withPulse) {
+        sealEl.classList.remove('is-pulsing');
+        // force reflow so the animation restarts
+        // eslint-disable-next-line no-unused-expressions
+        void sealEl.offsetWidth;
+        sealEl.classList.add('is-pulsing');
+      }
+    }
+
     // probe support: ?_probe=team activates the team tab on load (used by screenshot QA)
     var probeMatch = (location.search || '').match(/[?&]_probe=([^&]+)/);
     var probeTab = probeMatch ? probeMatch[1] : null;
-    function activateTab(name) {
+
+    var foldTimer = null;
+    var hideTimer = null;
+    var FOLD_OUT_MS = 220;
+    var FOLD_IN_MS  = 360;
+    var FLAP_MS     = 420;
+
+    function activateTab(name, opts) {
+      opts = opts || {};
+      var instant = !!opts.instant || prefersReduced;
+
+      var activeTabEl = null;
       tabs.forEach(function (t) {
         var isActive = t.getAttribute('data-tab') === name;
         t.classList.toggle('is-active', isActive);
         t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        if (isActive) activeTabEl = t;
       });
-      panels.forEach(function (p) {
-        var match = p.getAttribute('data-tab-panel') === name;
-        if (match) {
-          p.hidden = false;
+
+      // A2 · slide red seal to new active tab + pulse
+      positionSeal(activeTabEl, !instant);
+
+      // A4 · "案卷夹合上打开" — only when actually switching, not on initial mount
+      if (!instant && folderEl && stage && !opts.initial) {
+        folderEl.classList.remove('is-flapping');
+        // eslint-disable-next-line no-unused-expressions
+        void folderEl.offsetWidth;
+        folderEl.classList.add('is-flapping');
+        setTimeout(function () {
+          folderEl.classList.remove('is-flapping');
+        }, FLAP_MS + 40);
+      }
+
+      // Clear any pending fold timers from a previous tab change
+      if (foldTimer) { clearTimeout(foldTimer); foldTimer = null; }
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+
+      var outgoing = panels.filter(function (p) {
+        return !p.hidden && p.getAttribute('data-tab-panel') !== name;
+      });
+      var incoming = panels.filter(function (p) {
+        return p.getAttribute('data-tab-panel') === name;
+      })[0];
+
+      if (instant || opts.initial) {
+        // Initial load / reduced-motion: no fold animation
+        outgoing.forEach(function (p) {
+          p.classList.remove('is-active', 'is-folding-out', 'is-folding-in');
+          p.hidden = true;
+        });
+        if (incoming) {
+          incoming.hidden = false;
+          incoming.classList.remove('is-folding-out', 'is-folding-in');
           // restart enter animation by replaying class
-          p.classList.remove('is-active');
-          // force reflow so animation restarts
+          incoming.classList.remove('is-active');
           // eslint-disable-next-line no-unused-expressions
-          void p.offsetWidth;
-          p.classList.add('is-active');
-        } else {
-          p.classList.remove('is-active');
-          // delay hide a beat so cross-fade looks smooth
-          setTimeout(function () {
-            if (!p.classList.contains('is-active')) p.hidden = true;
-          }, 280);
+          void incoming.offsetWidth;
+          incoming.classList.add('is-active');
         }
+        return;
+      }
+
+      // A1 · case-file fold: outgoing rotates 0 → -90deg, incoming -90 → 0
+      // 1) start fold-out on the current panel
+      outgoing.forEach(function (p) {
+        p.classList.remove('is-active', 'is-folding-in');
+        p.classList.add('is-folding-out');
       });
+
+      // 2) after fold-out finishes, swap visibility and fold-in
+      foldTimer = setTimeout(function () {
+        outgoing.forEach(function (p) {
+          p.classList.remove('is-folding-out');
+          p.hidden = true;
+        });
+        if (incoming) {
+          incoming.hidden = false;
+          // restart enter animation
+          incoming.classList.remove('is-active');
+          incoming.classList.add('is-folding-in');
+          // eslint-disable-next-line no-unused-expressions
+          void incoming.offsetWidth;
+          incoming.classList.add('is-active');
+        }
+        // 3) clean up the fold-in class after the animation ends
+        hideTimer = setTimeout(function () {
+          if (incoming) incoming.classList.remove('is-folding-in');
+        }, FOLD_IN_MS + 40);
+      }, FOLD_OUT_MS);
     }
-    // honor probe query param
-    if (probeTab) {
-      var probeMatchEl = tabs.find(function (t) { return t.getAttribute('data-tab') === probeTab; });
-      if (probeMatchEl) activateTab(probeTab);
+
+    // Initial mount: position seal under default active tab WITHOUT fold animation
+    function getInitialActiveTabName() {
+      var def = tabs.filter(function (t) { return t.classList.contains('is-active'); })[0];
+      return def ? def.getAttribute('data-tab') : (tabs[0] && tabs[0].getAttribute('data-tab'));
+    }
+    var initialName = probeTab && tabs.some(function (t) { return t.getAttribute('data-tab') === probeTab; })
+      ? probeTab
+      : getInitialActiveTabName();
+    if (initialName) activateTab(initialName, { initial: true, instant: true });
+
+    // Re-position seal on resize (font load / orientation change)
+    window.addEventListener('resize', function () {
+      var current = tabs.filter(function (t) { return t.classList.contains('is-active'); })[0];
+      positionSeal(current, false);
+    }, { passive: true });
+    // Also reposition once fonts settle (web font reflow can shift tab widths)
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () {
+        var current = tabs.filter(function (t) { return t.classList.contains('is-active'); })[0];
+        positionSeal(current, false);
+      }).catch(function () { /* noop */ });
     }
 
     tabs.forEach(function (t) {
       t.addEventListener('click', function () {
+        if (t.classList.contains('is-active')) return; // skip click on already-active
         activateTab(t.getAttribute('data-tab'));
       });
       t.addEventListener('keydown', function (ev) {
