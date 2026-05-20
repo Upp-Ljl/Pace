@@ -438,9 +438,12 @@
 
     var foldTimer = null;
     var hideTimer = null;
-    var FOLD_OUT_MS = 220;
-    var FOLD_IN_MS  = 360;
-    var FLAP_MS     = 420;
+    // v3.4.1 · drawer slide (replaces v3.4 案卷翻页 fold — user 没感知 fold, 抽屉更直观)
+    // outgoing panel slides left -60% in 450ms; incoming starts at +200ms from right +60%
+    var FOLD_OUT_MS = 450;
+    var FOLD_IN_MS  = 450;
+    var INCOMING_DELAY_MS = 200;
+    var FLAP_MS     = 280; // v3.4.1 · 缩短 (0.42s → 0.28s) 不抢戏
 
     function activateTab(name, opts) {
       opts = opts || {};
@@ -497,19 +500,34 @@
         return;
       }
 
-      // A1 · case-file fold: outgoing rotates 0 → -90deg, incoming -90 → 0
-      // 1) start fold-out on the current panel
+      // v3.4.1 · drawer slide (replaces A1 fold)
+      // outgoing 0 → -60% (translateX) + opacity 1 → 0  (FOLD_OUT_MS)
+      // incoming starts at +INCOMING_DELAY_MS, +60% → 0 + opacity 0 → 1 (FOLD_IN_MS)
+      // 1) start drawer-out on current panel (drawer-pull label flashes via CSS)
       outgoing.forEach(function (p) {
         p.classList.remove('is-active', 'is-folding-in');
         p.classList.add('is-folding-out');
       });
 
-      // 2) after fold-out finishes, swap visibility and fold-in
+      // Drawer pull label · which tab we're pulling INTO (briefly flashes bottom-left)
+      if (stage) {
+        var labelEl = stage.querySelector('.exhibit-drawer-pull');
+        if (!labelEl) {
+          labelEl = document.createElement('span');
+          labelEl.className = 'exhibit-drawer-pull';
+          labelEl.setAttribute('aria-hidden', 'true');
+          stage.appendChild(labelEl);
+        }
+        var tabLabel = activeTabEl ? (activeTabEl.querySelector('.tab-label') && activeTabEl.querySelector('.tab-label').textContent.replace(/\s+·.*$/, '').trim()) : name;
+        labelEl.textContent = '[ 拉档 · ' + (tabLabel || name) + ' ]';
+        labelEl.classList.remove('is-pulling');
+        // eslint-disable-next-line no-unused-expressions
+        void labelEl.offsetWidth;
+        labelEl.classList.add('is-pulling');
+      }
+
+      // 2) incoming starts to slide in after INCOMING_DELAY_MS (overlap stops, gives visual break)
       foldTimer = setTimeout(function () {
-        outgoing.forEach(function (p) {
-          p.classList.remove('is-folding-out');
-          p.hidden = true;
-        });
         if (incoming) {
           incoming.hidden = false;
           // restart enter animation
@@ -519,11 +537,15 @@
           void incoming.offsetWidth;
           incoming.classList.add('is-active');
         }
-        // 3) clean up the fold-in class after the animation ends
+        // clean up the fold-in class + hide outgoing after the incoming animation ends
         hideTimer = setTimeout(function () {
+          outgoing.forEach(function (p) {
+            p.classList.remove('is-folding-out');
+            p.hidden = true;
+          });
           if (incoming) incoming.classList.remove('is-folding-in');
         }, FOLD_IN_MS + 40);
-      }, FOLD_OUT_MS);
+      }, INCOMING_DELAY_MS);
     }
 
     // Initial mount: position seal under default active tab WITHOUT fold animation
@@ -564,13 +586,13 @@
       });
     });
 
-    // 3 · section-enter stagger
+    // 3 · section-enter stagger + v3.4.1 drawer slide-in on stage
     if (!prefersReduced && 'IntersectionObserver' in window) {
+      // 3a · stagger groups (commit-rows / now-cards / team-cards) at low threshold
       var tourIO = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {
           if (!entry.isIntersecting) return;
           tourSection.classList.add('is-in');
-          // also mark direct stagger groups (commit-rows / now-cards / team-cards)
           tourSection.querySelectorAll('.commit-rows, .now-cards, .team-cards').forEach(function (g) {
             g.classList.add('is-in');
           });
@@ -578,11 +600,25 @@
         });
       }, { threshold: 0.1, rootMargin: '0px 0px -8% 0px' });
       tourIO.observe(tourSection);
+
+      // 3b · v3.4.1 drawer slide-in — stage opens from RIGHT like a Pace dock
+      // Higher threshold (0.3) so the user is actually looking at it when it fires.
+      if (stage) {
+        var drawerIO = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (!entry.isIntersecting) return;
+            stage.classList.add('is-drawer-in');
+            drawerIO.unobserve(stage);
+          });
+        }, { threshold: 0.3, rootMargin: '0px 0px -4% 0px' });
+        drawerIO.observe(stage);
+      }
     } else {
       tourSection.classList.add('is-in');
       tourSection.querySelectorAll('.commit-rows, .now-cards, .team-cards').forEach(function (g) {
         g.classList.add('is-in');
       });
+      if (stage) stage.classList.add('is-drawer-in');
     }
 
     // 4 + 5 · mentor toggle with typewriter

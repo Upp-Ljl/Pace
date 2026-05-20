@@ -2549,106 +2549,93 @@ main, .footer { position: relative; z-index: 3; }
 }
 
 /* ============================================================
-   v3.4 · Dossier switch FX
-   A1 · case-file fold (perspective rotateY)
-   A2 · red 章戳 indicator slides between tabs + pulse on land
-   A4 · 案卷夹合上打开 — twin flaps cinch over stage between tabs
+   v3.4 + v3.4.1 · Dossier switch FX
+   v3.4.1 drawer (replaces A1 fold — user 没感知 rotateY fold, 抽屉感更强)
+     · Trigger A: section enter → whole stage slides in from right (60% → 0)
+     · Trigger B: tab switch → outgoing slides left (-60%), incoming slides in from right (+60%)
+   A2 · red 章戳 indicator slides between tabs + pulse + red-glow halo on land
+   A4 · 案卷夹合上打开 — twin flaps cinch over stage between tabs (缩短到 0.28s)
    B3 · section-title red-line wipe (scroll-trigger scaleX 0→1)
    All transform/opacity — GPU composited. Reduced-motion fallback at end.
    ============================================================ */
 
-/* ─── A1 · Stage 3D perspective + fold panel ───────────────── */
+/* ─── v3.4.1 · Stage drawer slide-in (Trigger A) + dossier edge ───── */
 .exhibit-stage {
-  /* Give the panel room to rotate without clipping */
-  perspective: 1200px;
-  perspective-origin: 50% 35%;
-  overflow: hidden; /* clip the flap + 3D edges cleanly */
+  overflow: hidden; /* clip the panel + edges cleanly */
+  /* Drawer initial state: pushed to the right, transparent. */
+  transform: translateX(60%);
+  opacity: 0;
+  /* 2px red + 1px gold hard edge on the LEFT — case-file binding */
+  box-shadow:
+    inset 2px 0 0 var(--accent-red),
+    inset 3px 0 0 var(--gold),
+    /* original lift */
+    0 1px 0 var(--rule-soft),
+    3px 6px 0 rgba(120, 90, 40, 0.10),
+    0 22px 50px -28px rgba(70, 50, 24, 0.32),
+    /* dossier shadow as it slides out from binder */
+    -20px 0 60px -20px rgba(0, 0, 0, 0.2);
+  will-change: transform, opacity;
+}
+.exhibit-stage.is-drawer-in {
+  animation: stageDrawerIn 0.82s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+@keyframes stageDrawerIn {
+  0%   { transform: translateX(60%); opacity: 0; }
+  60%  { opacity: 1; }
+  100% { transform: translateX(0);   opacity: 1; }
 }
 
 .exhibit-panel {
-  /* Preserve 3D so rotateY composites with the parent perspective */
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transform-origin: 0% 50%; /* hinge on left edge — like a case file flap */
+  /* No more 3D rotation — pure translateX drawer slide */
   will-change: transform, opacity;
 }
 
-/* During tab switch: outgoing panel folds away to the LEFT (rotateY -90deg).
-   Override the v3.3 cross-fade with a sharper fold using transform. */
+/* Tab switch · drawer slide
+   Outgoing: 0 → -60% + opacity 1 → 0  (450ms, eased out)
+   Incoming: starts after 200ms via JS, 60% → 0 + opacity 0 → 1 (450ms) */
 .exhibit-panel.is-folding-out {
-  animation: panelFoldOut 0.22s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: panelDrawerOut 0.45s cubic-bezier(0.55, 0, 0.45, 1) forwards;
   pointer-events: none;
 }
 .exhibit-panel.is-folding-in {
-  animation: panelFoldIn 0.36s cubic-bezier(0.20, 0.7, 0.20, 1) forwards;
+  animation: panelDrawerIn 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 
-@keyframes panelFoldOut {
-  0%   {
-    opacity: 1;
-    transform: perspective(1200px) rotateY(0deg) translateZ(0) translateY(0);
-    filter: brightness(1);
-  }
-  100% {
-    opacity: 0;
-    transform: perspective(1200px) rotateY(-72deg) translateZ(-40px) translateY(0);
-    filter: brightness(0.78);
-  }
+@keyframes panelDrawerOut {
+  0%   { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(-60%); }
 }
-@keyframes panelFoldIn {
-  0%   {
-    opacity: 0;
-    transform: perspective(1200px) rotateY(72deg) translateZ(-30px) translateY(0);
-    filter: brightness(0.85);
-  }
-  55%  {
-    opacity: 1;
-    transform: perspective(1200px) rotateY(-4deg) translateZ(6px) translateY(0);
-    filter: brightness(1.02);
-  }
-  100% {
-    opacity: 1;
-    transform: perspective(1200px) rotateY(0deg) translateZ(0) translateY(0);
-    filter: brightness(1);
-  }
+@keyframes panelDrawerIn {
+  0%   { opacity: 0; transform: translateX(60%); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateX(0); }
 }
 
-/* Paper-crease shadow that sweeps across the panel as it folds — A1 polish */
-.exhibit-panel::before {
-  content: '';
+/* Drawer pull label · briefly flashes in bottom-left when抽屉 pulls
+   e.g. "[ 拉档 · 现在 ]" / "[ 拉档 · 团队 ]" */
+.exhibit-drawer-pull {
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 4;
-  background: linear-gradient(
-    100deg,
-    transparent 0%,
-    transparent 28%,
-    rgba(20, 12, 8, 0.18) 40%,
-    rgba(20, 12, 8, 0.08) 48%,
-    transparent 60%,
-    transparent 100%
-  );
+  left: 12px;
+  bottom: 8px;
+  z-index: 7;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--accent-red);
   opacity: 0;
-  transform: translateX(-30%);
-  mix-blend-mode: multiply;
+  pointer-events: none;
+  white-space: nowrap;
+  text-transform: uppercase;
 }
-.exhibit-panel.is-folding-out::before {
-  animation: panelCreaseOut 0.22s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+.exhibit-drawer-pull.is-pulling {
+  animation: drawerPullFlash 0.6s ease-out forwards;
 }
-.exhibit-panel.is-folding-in::before {
-  animation: panelCreaseIn 0.36s cubic-bezier(0.20, 0.7, 0.20, 1) forwards;
-}
-@keyframes panelCreaseOut {
-  0%   { opacity: 0; transform: translateX(-30%); }
-  60%  { opacity: 0.85; transform: translateX(30%); }
-  100% { opacity: 0; transform: translateX(80%); }
-}
-@keyframes panelCreaseIn {
-  0%   { opacity: 0; transform: translateX(80%); }
-  35%  { opacity: 0.55; transform: translateX(30%); }
-  100% { opacity: 0; transform: translateX(-30%); }
+@keyframes drawerPullFlash {
+  0%   { opacity: 0; transform: translateX(-4px); }
+  20%  { opacity: 0.95; transform: translateX(0); }
+  60%  { opacity: 0.95; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(0); }
 }
 
 /* ─── A2 · Red 章戳 sliding indicator (under active tab) ──── */
@@ -2704,7 +2691,9 @@ main, .footer { position: relative; z-index: 3; }
   white-space: nowrap;
 }
 .exhibit-tab-seal.is-pulsing {
-  animation: sealLand 0.36s cubic-bezier(0.34, 1.56, 0.45, 1) forwards;
+  animation:
+    sealLand 0.36s cubic-bezier(0.34, 1.56, 0.45, 1) forwards,
+    sealHalo 0.7s ease-out forwards;
 }
 .exhibit-tab-seal.is-pulsing .seal-sub {
   animation: sealSubFlash 0.7s ease-out forwards;
@@ -2715,6 +2704,16 @@ main, .footer { position: relative; z-index: 3; }
   40%  { transform: translate(calc(var(--seal-x, 0px) - 50%), calc(50% - 6px)) rotate(-12deg) scale(1.18); }
   70%  { transform: translate(calc(var(--seal-x, 0px) - 50%), calc(50% - 1px)) rotate(-6deg) scale(0.94); }
   100% { transform: translate(calc(var(--seal-x, 0px) - 50%), calc(50% - 2px)) rotate(-8deg) scale(1); }
+}
+/* v3.4.1 · 章戳到位时的红光晕脉冲 (drop-shadow 形式, 与 transform 解耦, 不打架) */
+@keyframes sealHalo {
+  0%   { filter: drop-shadow(0 2px 3px rgba(140, 44, 34, 0.35)); }
+  40%  {
+    filter:
+      drop-shadow(0 2px 3px rgba(140, 44, 34, 0.35))
+      drop-shadow(0 0 24px rgba(178, 56, 43, 0.55));
+  }
+  100% { filter: drop-shadow(0 2px 3px rgba(140, 44, 34, 0.35)); }
 }
 @keyframes sealSubFlash {
   0%   { opacity: 0; transform: translate(-50%, 0); }
@@ -2773,14 +2772,15 @@ main, .footer { position: relative; z-index: 3; }
   transform: scaleX(0.2);
   transform-origin: center;
 }
+/* v3.4.1 · 缩短到 0.28s — 不要太喧宾夺主, 让抽屉滑动是主角 */
 .exhibit-folder-flap.is-flapping .flap-top {
-  animation: flapTop 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: flapTop 0.28s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 .exhibit-folder-flap.is-flapping .flap-bot {
-  animation: flapBot 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: flapBot 0.28s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 .exhibit-folder-flap.is-flapping .flap-rule {
-  animation: flapRule 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: flapRule 0.28s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 @keyframes flapTop {
   0%   { transform: translateY(-100%); }
@@ -2855,24 +2855,33 @@ main, .footer { position: relative; z-index: 3; }
   100% { transform: translateX(-50%) scaleX(1); opacity: 0.92; }
 }
 
-/* ─── v3.4 · Reduced-motion fallback (full bypass) ─────────── */
+/* ─── v3.4 + v3.4.1 · Reduced-motion fallback (full bypass) ── */
 @media (prefers-reduced-motion: reduce) {
-  /* A1 · panel fold — no rotation, just snap */
-  .exhibit-panel.is-folding-out,
-  .exhibit-panel.is-folding-in {
-    animation: none !important;
+  /* v3.4.1 · stage drawer — no slide-in, just appear */
+  .exhibit-stage {
     transform: none !important;
-    filter: none !important;
     opacity: 1 !important;
+    animation: none !important;
   }
-  .exhibit-panel::before,
-  .exhibit-panel.is-folding-out::before,
-  .exhibit-panel.is-folding-in::before {
+  .exhibit-stage.is-drawer-in {
+    animation: none !important;
+  }
+  /* v3.4.1 · panel drawer — 200ms short fade, no translateX */
+  .exhibit-panel.is-folding-out {
+    animation: panelReducedFade 0.2s linear forwards !important;
+    transform: none !important;
+  }
+  .exhibit-panel.is-folding-in {
+    animation: panelReducedFadeIn 0.2s linear forwards !important;
+    transform: none !important;
+  }
+  /* v3.4.1 · drawer pull label — never flash */
+  .exhibit-drawer-pull,
+  .exhibit-drawer-pull.is-pulling {
     animation: none !important;
     opacity: 0 !important;
-    display: none !important;
   }
-  /* A2 · seal — static at final position, no pulse */
+  /* A2 · seal — static at final position, no pulse + no halo */
   .exhibit-tab-seal {
     transition: none !important;
   }
@@ -2900,5 +2909,13 @@ main, .footer { position: relative; z-index: 3; }
   .affirmation-body.has-underline-fx .title-underline-fx {
     transform: translateX(-50%) scaleX(1) !important;
   }
+}
+@keyframes panelReducedFade {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes panelReducedFadeIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
 }
 
