@@ -73,9 +73,11 @@
     requestAnimationFrame(tick);
   }
 
-  // ─── Docket scroll progress + shadow state ──────────────────────────
+  // ─── Docket scroll progress + shadow state + dossier strap ─────────
   var docket = document.querySelector('.docket');
   var docketProg = document.querySelector('.docket-progress');
+  var dossierStrap = document.querySelector('.dossier-strap');
+  var docRoot = document.documentElement;
   var lastScrollUpdate = 0;
   function onScroll() {
     var now = performance.now();
@@ -84,17 +86,23 @@
     lastScrollUpdate = now;
 
     var sy = window.scrollY || window.pageYOffset || 0;
+    var max = (document.documentElement.scrollHeight - window.innerHeight) || 1;
+    var pct = Math.max(0, Math.min(1, sy / max));
+
     if (docket) {
       if (sy > 8) docket.classList.add('is-scrolled');
       else docket.classList.remove('is-scrolled');
     }
     if (docketProg) {
-      var max = (document.documentElement.scrollHeight - window.innerHeight) || 1;
-      var pct = Math.max(0, Math.min(1, sy / max));
       docketProg.style.transform = 'scaleX(' + pct.toFixed(4) + ')';
     }
+    // Dossier binding strap — set a CSS var on :root so the strap (and any
+    // future scroll-driven element) can read it without a queryselector.
+    if (dossierStrap) {
+      docRoot.style.setProperty('--scroll-pct', pct.toFixed(4));
+    }
   }
-  if (docket || docketProg) {
+  if (docket || docketProg || dossierStrap) {
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll, { passive: true });

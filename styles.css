@@ -782,20 +782,55 @@ body {
    ============================================================ */
 
 /* ─── Paper grain overlay (fixed, no reflow) ─────────────── */
+/* A · grain breathes — sub-pixel drift on a long cycle. transform-only,
+   GPU-cheap, no layout. Capped at ~0.6px / 36s; doesn't catch the eye. */
 .paper-grain {
   position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  /* slightly oversize so drift never reveals an edge */
+  top: -2px; left: -2px; right: -2px; bottom: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
   pointer-events: none;
   z-index: 2;
   mix-blend-mode: multiply;
   opacity: 0.55;
+  will-change: transform;
+  animation: grainDrift 36s ease-in-out infinite;
+}
+@keyframes grainDrift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  25%      { transform: translate3d(0.5px, -0.5px, 0); }
+  50%      { transform: translate3d(-0.5px, 0.6px, 0); }
+  75%      { transform: translate3d(0.3px, 0.4px, 0); }
 }
 
-/* Make sure content stays above grain (grain is fixed at z 2) */
-.docket, main, .footer { position: relative; z-index: 3; }
-.docket { position: sticky; }
+/* C · case-file binding strap — left-edge red rule, length tracks scroll.
+   2px wide, 80% opacity, fixed, scaleY driven from JS via --scroll-pct.
+   Sits between docket (z:60) and main (z:3) so it can show on top of
+   paper but never on top of the docket. */
+.dossier-strap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 100vh;
+  background: var(--accent-red);
+  opacity: 0.8;
+  z-index: 4;
+  pointer-events: none;
+  transform-origin: top center;
+  transform: scaleY(var(--scroll-pct, 0));
+  transition: transform 0.12s linear;
+  will-change: transform;
+}
+
+/* Make sure content stays above grain (grain is fixed at z 2).
+   IMPORTANT: do not collapse .docket's z-index here — keep it on its own line
+   above content. Otherwise .case-stamp / verdict (z-index:3 inside main) tie
+   with docket and render OVER it during scroll — visible as a misalignment
+   at the top of the viewport when a verdict crosses the docket strip. */
+main, .footer { position: relative; z-index: 3; }
+.docket { position: sticky; top: 0; z-index: 60; }
 
 /* ─── Docket scroll-progress bar ─────────────────────────── */
 .docket-progress {
@@ -1111,6 +1146,12 @@ body {
 
   /* Docket progress still works since it's a transform, but no need to hide */
   .docket-progress { display: none; }
+
+  /* A · paper grain stops breathing */
+  .paper-grain { animation: none !important; }
+  /* C · binding strap shows static at full length so the page still has the
+     side rule, but no live-update with scroll. */
+  .dossier-strap { transform: scaleY(1) !important; transition: none !important; opacity: 0.35; }
 }
 
 
