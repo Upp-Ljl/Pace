@@ -1465,4 +1465,305 @@ main, .footer { position: relative; z-index: 3; }
 }
 
 
+/* ============================================================
+   v3.2 · Theatre section (video case file)
+   Dossier-style video frame with red/gold rule, REC indicator,
+   metadata strip. Inspired by zerou theatre but using Pace's
+   case-file aesthetic.
+   ============================================================ */
+
+.theatre { padding: var(--section-pad-y) 0; }
+
+.theatre-frame {
+  position: relative;
+  margin: var(--s-7) auto 0;
+  padding: 14px;
+  background: var(--paper);
+  border: 1px solid var(--rule-soft);
+  box-shadow:
+    0 1px 0 var(--rule-soft),
+    3px 6px 0 rgba(120, 90, 40, 0.10),
+    0 28px 60px -30px rgba(70, 50, 24, 0.45);
+  transform: rotate(-0.5deg);
+  max-width: 980px;
+  isolation: isolate;
+}
+.theatre-frame::before {
+  /* inner gold rule, like an evidence mounting card */
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 1px solid var(--gold);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+}
+.theatre-frame::after {
+  /* tape-like accent strip top-left corner */
+  content: '';
+  position: absolute;
+  top: -10px; left: 36px;
+  width: 86px; height: 18px;
+  background: rgba(178, 56, 43, 0.18);
+  border: 1px solid rgba(178, 56, 43, 0.30);
+  transform: rotate(-3.5deg);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.theatre-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: #0c0805;
+  position: relative;
+  z-index: 2;
+}
+
+/* 4 corner case-file folds (SVG-less, pure CSS triangles) */
+.theatre-corner {
+  position: absolute;
+  width: 18px; height: 18px;
+  z-index: 4;
+  pointer-events: none;
+}
+.theatre-corner-tl { top: 6px;    left: 6px;    border-top: 2px solid var(--accent-red); border-left: 2px solid var(--accent-red); }
+.theatre-corner-tr { top: 6px;    right: 6px;   border-top: 2px solid var(--accent-red); border-right: 2px solid var(--accent-red); }
+.theatre-corner-bl { bottom: 6px; left: 6px;    border-bottom: 2px solid var(--accent-red); border-left: 2px solid var(--accent-red); }
+.theatre-corner-br { bottom: 6px; right: 6px;   border-bottom: 2px solid var(--accent-red); border-right: 2px solid var(--accent-red); }
+
+/* I · REC indicator — small red dot + REC mono label bottom-left */
+.theatre-rec {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px 5px 8px;
+  background: rgba(12, 8, 5, 0.78);
+  border: 1px solid rgba(178, 56, 43, 0.55);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  font-weight: 700;
+  color: #e6dccb;
+  pointer-events: none;
+  opacity: 0;
+  animation: recAppear 0.6s ease-out 0.4s forwards;
+}
+.theatre-rec-dot {
+  width: 7px; height: 7px;
+  background: var(--accent-red);
+  border-radius: 99px;
+  animation: recBlink 2s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(178, 56, 43, 0.65);
+}
+.theatre-rec-label { line-height: 1; }
+@keyframes recAppear { to { opacity: 1; } }
+@keyframes recBlink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(178, 56, 43, 0.65); }
+  50%      { opacity: 0.35; box-shadow: 0 0 2px rgba(178, 56, 43, 0.20); }
+}
+
+/* Glow — radial red breathing behind the frame */
+.theatre-glow {
+  position: absolute;
+  inset: -36px;
+  background: radial-gradient(ellipse at center, rgba(178, 56, 43, 0.18) 0%, rgba(178, 56, 43, 0.06) 38%, transparent 70%);
+  z-index: -1;
+  pointer-events: none;
+  animation: theatreGlow 4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+@keyframes theatreGlow {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.95; transform: scale(1.04); }
+}
+
+/* Metadata strip — 4 mono cells */
+.theatre-strip {
+  margin: var(--s-7) auto 0;
+  max-width: 980px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  font-family: var(--mono);
+}
+@media (min-width: 720px) {
+  .theatre-strip { grid-template-columns: repeat(4, 1fr); }
+}
+.strip-cell {
+  background: var(--paper);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.strip-label {
+  color: var(--accent-red);
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.strip-val {
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+
+/* Mobile guards */
+@media (max-width: 720px) {
+  .theatre-frame { transform: rotate(-0.25deg); padding: 10px; }
+  .theatre-frame::after { left: 18px; width: 64px; }
+  .theatre-rec { left: 14px; bottom: 14px; padding: 4px 7px; font-size: 9.5px; }
+  .theatre-glow { inset: -18px; }
+}
+
+
+/* ============================================================
+   v3.2 · G · drifting watermark stamps
+   3 huge faint round stamps that float around the background.
+   ============================================================ */
+.watermark-stamps {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1; /* below grain (z:2), below main content (z:3) */
+  overflow: hidden;
+}
+.wm-stamp {
+  position: absolute;
+  width: 30vw;
+  min-width: 280px;
+  max-width: 560px;
+  height: auto;
+  color: var(--accent-red);
+  opacity: 0.035;
+  will-change: transform;
+  filter: blur(0.3px);
+}
+.wm-stamp-1 {
+  top: 18%; left: -6vw;
+  transform: rotate(-12deg);
+  animation: wmDrift1 52s ease-in-out infinite;
+}
+.wm-stamp-2 {
+  top: 48%; right: -8vw;
+  transform: rotate(8deg);
+  animation: wmDrift2 64s ease-in-out infinite;
+  color: var(--gold-deep);
+  opacity: 0.04;
+}
+.wm-stamp-3 {
+  bottom: 6%; left: 35%;
+  transform: rotate(-5deg);
+  animation: wmDrift3 58s ease-in-out infinite;
+  opacity: 0.03;
+}
+@keyframes wmDrift1 {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-12deg); }
+  50%      { transform: translate3d(40px, -28px, 0) rotate(-9deg); }
+}
+@keyframes wmDrift2 {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(8deg); }
+  50%      { transform: translate3d(-36px, 30px, 0) rotate(11deg); }
+}
+@keyframes wmDrift3 {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-5deg); }
+  50%      { transform: translate3d(28px, -22px, 0) rotate(-2deg); }
+}
+
+@media (max-width: 720px) {
+  .wm-stamp { min-width: 200px; max-width: 320px; }
+  .wm-stamp-1 { top: 12%; left: -10vw; }
+  .wm-stamp-3 { bottom: 10%; left: 22%; }
+}
+
+
+/* ============================================================
+   v3.2 · F · section-stamp ("已读" / "归档" / "复核")
+   Small SVG-style stamp pasted into top-left of each major section
+   when it enters the viewport. CSS-drawn for speed.
+   ============================================================ */
+.section-stamp {
+  position: absolute;
+  top: 18px;
+  left: clamp(8px, 2vw, 36px);
+  width: 64px; height: 64px;
+  border: 2.5px solid var(--accent-red);
+  border-radius: 50%;
+  color: var(--accent-red);
+  font-family: var(--italic-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transform: rotate(-12deg) scale(0.6);
+  transform-origin: center;
+  /* faint dotted inner ring for stamp texture */
+  background:
+    radial-gradient(circle at 30% 40%, rgba(178,56,43,0.05) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 70% 60%, rgba(178,56,43,0.04) 0 0.8px, transparent 1.3px),
+    radial-gradient(circle at 50% 80%, rgba(178,56,43,0.05) 0 0.6px, transparent 1px);
+  text-shadow: 0.4px 0.4px 0 rgba(178, 56, 43, 0.28);
+  /* faint paper-like background so the stamp looks set into the page */
+  box-shadow: inset 0 0 0 2px rgba(178, 56, 43, 0.22);
+}
+.section-stamp.is-stamped {
+  animation: sectionStampThud 0.55s cubic-bezier(0.34, 1.6, 0.45, 1) forwards;
+}
+@keyframes sectionStampThud {
+  0%   { opacity: 0;    transform: rotate(-22deg) scale(0.4) translateY(-12px); }
+  60%  { opacity: 1;    transform: rotate(-3deg)  scale(1.08) translateY(0); }
+  85%  {                transform: rotate(-2deg)  scale(0.97); }
+  100% { opacity: 0.88; transform: rotate(-3deg)  scale(1); }
+}
+.cases, .theatre, .promises { position: relative; }
+.cases .section-stamp { top: 32px; }
+.theatre .section-stamp { top: 32px; }
+.promises .section-stamp { top: 32px; }
+
+@media (max-width: 720px) {
+  .section-stamp { width: 48px; height: 48px; font-size: 9px; top: 14px; }
+}
+
+
+/* ============================================================
+   v3.2 · Reduced motion overrides
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  /* Theatre glow / REC blink off, autoplay browser-level still applies */
+  .theatre-glow { animation: none !important; opacity: 0.55 !important; transform: none !important; }
+  .theatre-rec  { animation: none !important; opacity: 1 !important; }
+  .theatre-rec-dot { animation: none !important; }
+  .theatre-frame { transform: none !important; }
+
+  /* G · watermark stamps stop drifting (still visible static) */
+  .wm-stamp,
+  .wm-stamp-1,
+  .wm-stamp-2,
+  .wm-stamp-3 {
+    animation: none !important;
+  }
+
+  /* F · section stamps appear instantly at final state */
+  .section-stamp.is-stamped {
+    animation: none !important;
+    opacity: 0.88;
+    transform: rotate(-3deg) scale(1);
+  }
+}
 

@@ -33,7 +33,8 @@ Thumbs.db
 .tmp/
 
 # Demo video + BGM artifacts (kept in repo, not served from landing)
-*.mp4
+# Only block docs/*.mp4 — root pace-demo.mp4 IS served by the landing site.
+docs/*.mp4
 *.mp3
 docs/bgm-candidates/
 docs/

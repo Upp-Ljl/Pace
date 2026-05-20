@@ -289,4 +289,38 @@
   // ─── Footer year (if any) ───────────────────────────────────────────
   var yearEl = document.querySelector('[data-year]');
   if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+
+  // ─── v3.2 · F · section stamps ("已读" / "归档" / "复核" / "存档") ────
+  // Inject a small round stamp into the top-left of each major section.
+  // Stamp pops in when section crosses ~14% into viewport.
+  var sectionStampMap = [
+    { sel: '.cases',     label: '已读' },
+    { sel: '.theatre',   label: '复核' },
+    { sel: '.promises',  label: '归档' },
+    { sel: '.download',  label: '存档' },
+  ];
+  sectionStampMap.forEach(function (def) {
+    var sec = document.querySelector(def.sel);
+    if (!sec) return;
+    if (sec.querySelector(':scope > .section-stamp')) return;
+    var s = document.createElement('div');
+    s.className = 'section-stamp';
+    s.setAttribute('aria-hidden', 'true');
+    s.textContent = def.label;
+    sec.insertBefore(s, sec.firstChild);
+  });
+
+  if (!prefersReduced && 'IntersectionObserver' in window) {
+    var stampIO = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-stamped');
+          stampIO.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.14, rootMargin: '0px 0px -4% 0px' });
+    document.querySelectorAll('.section-stamp').forEach(function (s) { stampIO.observe(s); });
+  } else {
+    document.querySelectorAll('.section-stamp').forEach(function (s) { s.classList.add('is-stamped'); });
+  }
 })();

@@ -26,7 +26,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" />
 
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
 </head>
 <body>
 
@@ -42,6 +42,36 @@
   <!-- Dossier binding strap — left-edge red rule that fills with scroll progress -->
   <div class="dossier-strap" aria-hidden="true"></div>
 
+  <!-- G · drifting watermark stamps (huge faint round stamps that float around) -->
+  <div class="watermark-stamps" aria-hidden="true">
+    <svg class="wm-stamp wm-stamp-1" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet">
+      <g fill="none" stroke="currentColor" stroke-width="3">
+        <circle cx="100" cy="100" r="92" />
+        <circle cx="100" cy="100" r="78" />
+      </g>
+      <text x="100" y="92" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="22" font-weight="800" letter-spacing="6">PACE</text>
+      <text x="100" y="120" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="13" font-weight="700" letter-spacing="3">CASE FILE</text>
+      <line x1="40" y1="135" x2="160" y2="135" stroke="currentColor" stroke-width="1.5" />
+      <text x="100" y="152" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="2">已归档 · ARCHIVED</text>
+    </svg>
+    <svg class="wm-stamp wm-stamp-2" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet">
+      <g fill="none" stroke="currentColor" stroke-width="3">
+        <rect x="20" y="20" width="160" height="160" />
+        <rect x="32" y="32" width="136" height="136" />
+      </g>
+      <text x="100" y="92" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="20" font-weight="800" letter-spacing="4">MENTOR</text>
+      <line x1="50" y1="105" x2="150" y2="105" stroke="currentColor" stroke-width="1.5" />
+      <text x="100" y="125" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="11" font-weight="700" letter-spacing="2">v0.1 · 2026</text>
+      <text x="100" y="148" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="2">LOCAL-FIRST</text>
+    </svg>
+    <svg class="wm-stamp wm-stamp-3" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet">
+      <g fill="none" stroke="currentColor" stroke-width="3">
+        <circle cx="100" cy="100" r="92" />
+      </g>
+      <text x="100" y="108" text-anchor="middle" fill="currentColor" font-family="Instrument Serif, serif" font-style="italic" font-size="44" font-weight="400">已读</text>
+    </svg>
+  </div>
+
   <a class="skip-link" href="#main">跳到正文</a>
 
   <!-- ─────────────────────────────────────────────────── Docket / Top bar -->
@@ -54,6 +84,7 @@
       </a>
       <nav class="docket-nav" aria-label="主导航">
         <a href="#how-it-works">怎么读</a>
+        <a href="#watch">看一眼</a>
         <a href="#promises">不变的事</a>
         <a href="https://github.com/" target="_blank" rel="noopener noreferrer">GitHub</a>
         <a class="docket-cta" href="#download">↓ 下载</a>
@@ -307,6 +338,62 @@
 
     <hr class="section-rule" />
 
+    <!-- ─────────────────────────────────────────────────── Theatre · video case file -->
+    <section class="theatre" id="watch" aria-labelledby="theatre-h2">
+      <div class="container">
+        <div class="case-label">
+          <span class="case-num">案卷 · 04</span>
+          <span class="case-slug">一次完整 session · 117 秒压成 1080p</span>
+        </div>
+        <h2 class="case-title" id="theatre-h2">看一眼 Pace 怎么开的口。</h2>
+        <p class="case-summary">没旁白 · 全用真数据 · 真 commit sha · 真 cc 对话 · 真团队 RACI。</p>
+
+        <div class="theatre-frame">
+          <div class="theatre-corner theatre-corner-tl" aria-hidden="true"></div>
+          <div class="theatre-corner theatre-corner-tr" aria-hidden="true"></div>
+          <div class="theatre-corner theatre-corner-bl" aria-hidden="true"></div>
+          <div class="theatre-corner theatre-corner-br" aria-hidden="true"></div>
+          <video
+            class="theatre-video"
+            src="pace-demo.mp4"
+            controls
+            autoplay
+            loop
+            muted
+            playsinline
+            preload="auto"
+            aria-label="Pace 演示视频 · 1 分 57 秒"
+          ></video>
+          <div class="theatre-rec" aria-hidden="true">
+            <span class="theatre-rec-dot"></span>
+            <span class="theatre-rec-label">REC</span>
+          </div>
+          <div class="theatre-glow" aria-hidden="true"></div>
+        </div>
+
+        <div class="theatre-strip" role="list">
+          <div class="strip-cell" role="listitem">
+            <span class="strip-label">duration</span>
+            <span class="strip-val">1m 57s</span>
+          </div>
+          <div class="strip-cell" role="listitem">
+            <span class="strip-label">cost</span>
+            <span class="strip-val">$0 · 本地优先</span>
+          </div>
+          <div class="strip-cell" role="listitem">
+            <span class="strip-label">agent</span>
+            <span class="strip-val">5 工具 · 29 秒才开口</span>
+          </div>
+          <div class="strip-cell" role="listitem">
+            <span class="strip-label">bgm</span>
+            <span class="strip-val">CC BY · Kevin MacLeod</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="section-rule" />
+
     <!-- ─────────────────────────────────────────────────── Sworn / promises -->
     <section class="promises" id="promises" aria-labelledby="promises-h2">
       <div class="container">
@@ -411,6 +498,6 @@
     </div>
   </footer>
 
-  <script src="script.js?v=6" defer></script>
+  <script src="script.js?v=7" defer></script>
 </body>
 </html>
