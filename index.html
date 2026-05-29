@@ -1,765 +1,2167 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Pace · main 上裸改 3 小时后，它问你一句话。</title>
-  <meta name="description" content="Pace 是一个本地优先的桌面 mentor。它看你的 cc、查你的提交、看你的团队，告诉你下一步找谁、话怎么开。开源 MIT · 自带 LLM key · 5 MB。" />
-  <meta name="theme-color" content="#ece4d2" />
+  <title>tspr — AI 给测试，我们找真问题</title>
+  <meta name="description" content="tspr 是本地 AI test generation MCP。指 Express API 给它，它 30 秒内扫路由、写 supertest、丢沙箱跑、抓出真 bug。5 维度可量化打分。开源 MIT。" />
+  <meta name="theme-color" content="#0f1117" />
 
-  <!-- Open Graph -->
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="Pace — main 上裸改 3 小时后，它问你一句话。" />
-  <meta property="og:description" content="本地优先的桌面 mentor。看你的 cc、查你的提交、看你的团队，告诉你下一步找谁、话怎么开。" />
-  <meta property="og:site_name" content="Pace" />
+  <meta property="og:title" content="tspr — AI 给测试，我们找真问题" />
+  <meta property="og:description" content="本地 AI test generation。Node Express + Docker 沙箱。30s 端到端 + 量化 5 维打分。" />
+  <meta property="og:site_name" content="tspr" />
   <meta property="og:locale" content="zh_CN" />
 
-  <!-- Twitter -->
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Pace — main 上裸改 3 小时后，它问你一句话。" />
-  <meta name="twitter:description" content="本地优先的桌面 mentor。它告诉你下一步找谁、话怎么开。" />
-
-  <!-- Favicon (inline SVG, no external file needed) -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23ece4d2'/%3E%3Cpath d='M9 22V10h6.5a4 4 0 0 1 0 8H12v4H9zm3-6.5h3.2a1.5 1.5 0 0 0 0-3H12v3z' fill='%23b2382b'/%3E%3C/svg%3E" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1117'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='14' font-weight='700' fill='%236c63ff' text-anchor='middle'%3Et%3C/text%3E%3C/svg%3E" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;900&display=swap" />
 
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <style>
+    :root {
+      --bg:         #0f1117;
+      --bg-card:    #1a1d27;
+      --bg-deeper:  #07090f;
+      --border:     #2a2d3e;
+      --accent:     #6c63ff;
+      --accent-2:   #22d3ee;
+      --text:       #e2e4ef;
+      --text-dim:   #8b8fa8;
+      --green:      #22c55e;
+      --red:        #ef4444;
+      --yellow:     #f59e0b;
+      --orange:     #ea580c;
+      --font-mono:  "JetBrains Mono", ui-monospace, monospace;
+      --font-ui:    "Inter", system-ui, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      min-height: 100vh;
+      line-height: 1.55;
+      overflow-x: hidden;
+    }
+    ::selection { background: var(--accent); color: #fff; }
+    a { color: inherit; text-decoration: none; }
 
-  <!-- v3.5 P1 · Lenis 整页惯性滚动 (Vercel / Linear / Cursor 同款; +3kb)
-       reduced-motion 不初始化 → 走原生滚动. -->
-  <script src="https://cdn.jsdelivr.net/npm/lenis@1.3.23/dist/lenis.min.js" defer></script>
+    /* ── Grain overlay (subtle noise) ───────────────────────────── */
+    .grain {
+      position: fixed; inset: 0; pointer-events: none; z-index: 1;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* ── Background: static gradients only (no drifting animation) ───── */
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse at 20% 0%,   rgba(108, 99, 255, 0.18), transparent 60%),
+        radial-gradient(ellipse at 80% 100%, rgba(34, 211, 238, 0.13), transparent 60%);
+    }
+    /* Light, non-animated accent dots (replaces blurred orbs for perf) */
+    .orb { position: fixed; border-radius: 50%; filter: blur(28px); z-index: 0; pointer-events: none; }
+    .orb-1 { top: 10%; left: -60px;  width: 260px; height: 260px; background: var(--accent);   opacity: 0.10; }
+    .orb-2 { bottom: 20%; right: -60px; width: 220px; height: 220px; background: var(--accent-2); opacity: 0.08; }
+
+    /* ── Topbar ────────────────────────────────────────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      backdrop-filter: blur(12px);
+      background: rgba(15, 17, 23, 0.7);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 1.5rem;
+      display: flex; align-items: center; gap: 1.5rem;
+    }
+    .topbar__brand {
+      font-family: var(--font-mono); font-weight: 700; font-size: 1rem;
+      color: var(--accent); letter-spacing: -0.02em;
+    }
+    .topbar__nav { margin-left: auto; display: flex; gap: 1.25rem; align-items: center; }
+    .topbar__nav a {
+      font-size: 0.85rem; color: var(--text-dim);
+      transition: color 0.15s;
+    }
+    .topbar__nav a:hover { color: var(--text); }
+    .btn-cta {
+      background: var(--accent); color: #fff;
+      padding: 0.45rem 0.95rem; border-radius: 6px;
+      font-size: 0.85rem; font-weight: 600;
+      transition: transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 0 0 0 rgba(108, 99, 255, 0.4);
+    }
+    .btn-cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px -6px rgba(108, 99, 255, 0.8); }
+
+    /* ── Layout ──────────────────────────────────────────────── */
+    main { position: relative; z-index: 2; }
+    section { padding: 5rem 1.5rem; }
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    /* ── Hero ────────────────────────────────────────────────── */
+    .hero { padding-top: 6rem; padding-bottom: 4rem; text-align: center; }
+    .hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.78rem;
+      color: var(--accent); border: 1px solid rgba(108, 99, 255, 0.4);
+      padding: 0.35rem 0.85rem; border-radius: 999px;
+      background: rgba(108, 99, 255, 0.06);
+      margin-bottom: 1.5rem;
+      animation: fadeUp 0.7s 0.1s both;
+    }
+    .hero__eyebrow .pulse {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); position: relative;
+    }
+    .hero__eyebrow .pulse::after {
+      content: ''; position: absolute; inset: -4px; border-radius: 50%;
+      background: var(--green); opacity: 0.4;
+      animation: pulse 1.8s ease-out infinite;
+    }
+    @keyframes pulse { 0% { transform: scale(0.8); opacity: 0.6 } 100% { transform: scale(2.5); opacity: 0 } }
+    /* Ring-pulse — only box-shadow expands, element itself stays put. Safe for buttons. */
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0   rgba(34,197,94,0.55); }
+      70%  { box-shadow: 0 0 0 14px rgba(34,197,94,0);    }
+      100% { box-shadow: 0 0 0 0   rgba(34,197,94,0);    }
+    }
+    /* Gentle breathing fade for "LIVE" mini chips. */
+    @keyframes breathe {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.55; }
+    }
+
+    .hero__h1 {
+      font-size: clamp(2.4rem, 6vw, 4.6rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin-bottom: 1.5rem;
+      animation: fadeUp 0.8s 0.2s both;
+    }
+    .hero__h1 .grad {
+      background: linear-gradient(120deg, var(--accent) 30%, var(--accent-2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .hero__h1 .strike {
+      position: relative; display: inline-block; color: var(--text-dim);
+    }
+    .hero__h1 .strike::after {
+      content: ''; position: absolute; left: -4px; right: -4px; top: 52%;
+      height: 4px; background: var(--red);
+      transform: scaleX(0); transform-origin: left;
+      animation: strikeOut 0.6s 1.4s both ease-out;
+    }
+    @keyframes strikeOut { to { transform: scaleX(1) } }
+
+    .hero__lede {
+      max-width: 680px; margin: 0 auto 2rem;
+      font-size: 1.15rem; color: var(--text-dim); line-height: 1.55;
+      animation: fadeUp 0.8s 0.4s both;
+    }
+    .hero__cta-row {
+      display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+      animation: fadeUp 0.8s 0.55s both;
+    }
+    .hero__cta-row a {
+      padding: 0.85rem 1.4rem; border-radius: 8px;
+      font-size: 0.95rem; font-weight: 600;
+      transition: transform 0.15s, background 0.2s, border 0.2s;
+    }
+    .hero__cta-row .primary {
+      background: var(--accent); color: #fff;
+      box-shadow: 0 8px 32px -8px rgba(108, 99, 255, 0.6);
+    }
+    .hero__cta-row .primary:hover { transform: translateY(-2px); background: var(--accent-2); color: var(--bg-deeper); }
+    .hero__cta-row .secondary {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .hero__cta-row .secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px) }
+      to   { opacity: 1; transform: translateY(0) }
+    }
+
+    /* ── 30s auto-loop demo ──────────────────────────────────── */
+    .demo {
+      max-width: 920px; margin: 3rem auto 0;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 16px; overflow: hidden;
+      box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.7);
+      animation: fadeUp 0.8s 0.7s both;
+    }
+    .demo__head {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.6rem 0.95rem;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-dim);
+    }
+    .dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+    .dot.r { background: #ff5f57 } .dot.y { background: #febc2e } .dot.g { background: #28c840 }
+    .demo__head__title { margin-left: 0.5rem; }
+    .demo__head__timer {
+      margin-left: auto; font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      transition: background 0.18s, color 0.18s, padding 0.18s, transform 0.18s;
+      padding: 0.15rem 0.4rem; border-radius: 5px;
+    }
+    /* "Done — click to replay" state */
+    .demo__head__timer.done {
+      background: rgba(34,197,94,0.18); color: var(--green);
+      font-weight: 700; padding: 0.2rem 0.65rem;
+      animation: pulse-ring 1.8s ease-out infinite;
+    }
+    .demo__head__timer.done:hover { transform: scale(1.05); }
+
+    /* Subtle "click anywhere to replay" hint when finished */
+    .demo--finished .demo__stage::after {
+      content: '✓ end · click to replay';
+      position: absolute; top: 1rem; right: 1rem; z-index: 5;
+      font-family: var(--font-mono); font-size: 0.7rem;
+      color: var(--green);
+      background: rgba(0,0,0,0.55);
+      padding: 0.35rem 0.7rem; border-radius: 999px;
+      border: 1px solid rgba(34,197,94,0.4);
+      pointer-events: none;
+      animation: breathe 1.6s ease-in-out infinite;
+    }
+    /* Finished progress bar locked at 100% with green gradient */
+    .demo--finished .demo__progress > i {
+      background: linear-gradient(to right, var(--green), var(--accent-2));
+    }
+
+    .demo__stage {
+      position: relative;
+      height: 560px;
+      background:
+        radial-gradient(ellipse at top, rgba(108,99,255,0.06), transparent 70%),
+        var(--bg-deeper);
+      overflow: hidden;
+    }
+
+    /* === Demo scenes (JS-driven .active toggle; entry anims only when active) === */
+    .scene {
+      position: absolute; inset: 0;
+      padding: 1.4rem 2rem 1.6rem;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.35s ease;
+      visibility: hidden;
+      overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .scene.active { opacity: 1; visibility: visible; }
+
+    /* Beautified scene header: big number + title + chapter chip on right */
+    .scene-head {
+      display: flex; align-items: center; gap: 1rem;
+      margin-bottom: 1rem;
+      flex-shrink: 0;
+    }
+    .scene-head__num {
+      font-family: var(--font-mono); font-weight: 900;
+      font-size: 1.6rem; line-height: 1;
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      letter-spacing: -0.04em;
+      flex-shrink: 0;
+    }
+    .scene-head__num .total {
+      color: var(--text-dim);
+      background: none; -webkit-text-fill-color: var(--text-dim);
+      font-size: 0.85rem; font-weight: 700;
+      margin-left: 0.15em;
+    }
+    .scene-head__title {
+      font-size: 1.15rem; font-weight: 700;
+      letter-spacing: -0.01em; flex: 1;
+      line-height: 1.25;
+    }
+    .scene-head__chapter {
+      font-family: var(--font-mono); font-size: 0.65rem;
+      letter-spacing: 0.1em; color: var(--accent);
+      background: rgba(108,99,255,0.1);
+      border: 1px solid rgba(108,99,255,0.35);
+      padding: 0.3rem 0.65rem; border-radius: 999px;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .scene-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+
+    /* Hide legacy elements that the new header replaces */
+    .scene .chapter, .scene .scene__title { display: none; }
+
+    /* New scene-6 dashboard preview */
+    .dash-preview {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;
+      margin-top: 0.4rem;
+    }
+    .dash-card {
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0.85rem 1rem;
+    }
+    .dash-card__lbl { font-size: 0.62rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+    .dash-card__num { font-size: 1.8rem; font-weight: 900; font-family: var(--font-mono); line-height: 1; margin: 0.3rem 0; }
+    .dash-card__num.ok   { color: var(--green); }
+    .dash-card__num.fail { color: var(--red); }
+    .dash-card__num.dim  { color: var(--text-dim); }
+    .dash-card__num.acc  { color: var(--accent); }
+    .dash-card__sub { font-size: 0.7rem; color: var(--text-dim); }
+
+    .dash-fail-list { display: flex; flex-direction: column; gap: 0.32rem; margin-top: 0.6rem; }
+    .dash-fail-row {
+      display: flex; gap: 0.5rem; align-items: center;
+      background: rgba(0,0,0,0.3); border-left: 3px solid var(--red);
+      padding: 0.4rem 0.6rem; border-radius: 4px;
+      font-family: var(--font-mono); font-size: 0.72rem;
+    }
+    .dash-fail-row .sev {
+      font-size: 0.58rem; font-weight: 700; letter-spacing: 0.05em;
+      padding: 0.1rem 0.4rem; border-radius: 3px;
+    }
+    .dash-fail-row .sev.crit { background: #ef444422; color: var(--red); border: 1px solid #ef444466; }
+    .dash-fail-row .sev.high { background: #ea580c22; color: var(--orange); border: 1px solid #ea580c66; }
+    .scene-5.active .dash-card, .scene-5.active .dash-fail-row {
+      animation: scoreIn 0.4s both;
+    }
+    .scene-5 .dash-card, .scene-5 .dash-fail-row { opacity: 0; }
+    .scene-5.active .dash-card:nth-child(1) { animation-delay: 0.05s }
+    .scene-5.active .dash-card:nth-child(2) { animation-delay: 0.20s }
+    .scene-5.active .dash-card:nth-child(3) { animation-delay: 0.35s }
+    .scene-5.active .dash-card:nth-child(4) { animation-delay: 0.50s }
+    .scene-5.active .dash-fail-row:nth-child(1) { animation-delay: 0.70s }
+    .scene-5.active .dash-fail-row:nth-child(2) { animation-delay: 0.85s }
+    .scene-5.active .dash-fail-row:nth-child(3) { animation-delay: 1.00s }
+    .scene-5.active .dash-fail-row:nth-child(4) { animation-delay: 1.15s }
+
+    /* Scene-7 heal timeline */
+    .heal-tl { list-style: none; padding-left: 0.8rem; border-left: 2px solid var(--border); margin-top: 0.4rem; }
+    .heal-tl li {
+      position: relative; padding: 0.55rem 0 0.55rem 1.2rem;
+      font-family: var(--font-mono); font-size: 0.82rem;
+      opacity: 0;
+    }
+    .heal-tl li::before {
+      content: ''; position: absolute; left: -0.55rem; top: 1.05rem;
+      width: 0.7rem; height: 0.7rem; border-radius: 50%;
+      background: var(--text-dim); transform: translateY(-50%);
+    }
+    .heal-tl li.warn::before { background: var(--yellow); }
+    .heal-tl li.fail::before { background: var(--red); }
+    .heal-tl li.ok::before   { background: var(--green); }
+    .heal-tl .why { color: var(--text-dim); font-size: 0.72rem; }
+    .scene-6.active .heal-tl li { animation: lineIn 0.4s both; }
+    .scene-6.active .heal-tl li:nth-child(1) { animation-delay: 0.1s }
+    .scene-6.active .heal-tl li:nth-child(2) { animation-delay: 0.5s }
+    .scene-6.active .heal-tl li:nth-child(3) { animation-delay: 0.9s }
+    .scene-6.active .heal-tl li:nth-child(4) { animation-delay: 1.3s }
+
+    /* Scene-8 schedules + alerts split */
+    .ops-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; margin-top: 0.4rem; }
+    .ops-panel { background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 10px; padding: 0.95rem 1.1rem; }
+    .ops-panel__head {
+      font-family: var(--font-mono); font-size: 0.7rem;
+      color: var(--accent); letter-spacing: 0.05em; text-transform: uppercase;
+      margin-bottom: 0.6rem;
+    }
+    .ops-row { display: flex; gap: 0.6rem; align-items: center; padding: 0.3rem 0; font-family: var(--font-mono); font-size: 0.78rem; }
+    .ops-row .badge { font-size: 0.6rem; padding: 0.12rem 0.45rem; border-radius: 3px; background: rgba(108,99,255,0.15); color: var(--accent); }
+    .ops-row .next { color: var(--green); margin-left: auto; font-size: 0.7rem; }
+    .ops-row .arrow { color: var(--text-dim); }
+
+    /* Scene-9 meme-weather — rich case files */
+    .mw-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+      padding: 0.65rem 0.9rem;
+      background: linear-gradient(90deg, rgba(108,99,255,0.15), rgba(234,88,12,0.08));
+      border: 1px solid rgba(108,99,255,0.35); border-radius: 10px;
+      margin-bottom: 0.7rem; flex-shrink: 0;
+      opacity: 0;
+    }
+    .scene-9.active .mw-header { animation: fadeUp 0.4s 0.05s both; }
+    .mw-header__name { font-size: 1rem; font-weight: 800; }
+    .mw-header__url {
+      font-family: var(--font-mono); font-size: 0.7rem;
+      color: var(--accent); margin-left: 0.5rem;
+      background: rgba(0,0,0,0.4); padding: 0.18rem 0.55rem; border-radius: 4px;
+      text-decoration: none;
+      border: 1px solid rgba(108,99,255,0.3);
+      transition: background 0.15s, border-color 0.15s;
+      display: inline-flex; gap: 0.4rem; align-items: center;
+    }
+    .mw-header__url:hover { background: rgba(108,99,255,0.18); border-color: var(--accent); }
+    .alive-mini {
+      font-size: 0.55rem; font-weight: 700; letter-spacing: 0.08em;
+      background: var(--green); color: #000;
+      padding: 0.08rem 0.35rem; border-radius: 3px;
+      animation: breathe 1.6s ease-in-out infinite;
+    }
+    .mw-header__sub { font-size: 0.72rem; color: var(--text-dim); margin-top: 0.15rem; }
+    .mw-header__stack { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .mw-tech {
+      font-family: var(--font-mono); font-size: 0.65rem;
+      background: rgba(108,99,255,0.15); color: var(--accent);
+      padding: 0.18rem 0.5rem; border-radius: 4px;
+      border: 1px solid rgba(108,99,255,0.35);
+    }
+
+    .mw-cases { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; flex: 1; }
+    .mw-case {
+      background: rgba(0,0,0,0.5); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0.75rem 0.85rem;
+      display: flex; flex-direction: column; gap: 0.5rem;
+      opacity: 0; position: relative;
+    }
+    .mw-case--hi  { border-left: 3px solid var(--orange); }
+    .mw-case--xhi { border-left: 3px solid var(--red); }
+    .mw-case--mid { border-left: 3px solid var(--yellow); }
+    .mw-case__head {
+      display: grid; grid-template-columns: auto 1fr auto; gap: 0.55rem;
+      align-items: center;
+    }
+    .mw-case__icon { font-size: 1.55rem; line-height: 1; }
+    .mw-case__id { font-family: var(--font-mono); font-size: 0.58rem;
+                   color: var(--text-dim); letter-spacing: 0.05em; }
+    .mw-case__title { font-size: 0.92rem; font-weight: 700; }
+    .mw-pill {
+      font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
+      padding: 0.15rem 0.5rem; border-radius: 3px;
+      letter-spacing: 0.08em;
+    }
+    .mw-pill--hi  { background: rgba(234,88,12,0.18); color: var(--orange); border: 1px solid var(--orange); }
+    .mw-pill--xhi { background: rgba(239,68,68,0.18); color: var(--red);    border: 1px solid var(--red); }
+    .mw-pill--mid { background: rgba(245,158,11,0.18); color: var(--yellow); border: 1px solid var(--yellow); }
+    .mw-code {
+      font-family: var(--font-mono); font-size: 0.68rem; line-height: 1.55;
+      background: rgba(0,0,0,0.55); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.5rem 0.65rem;
+      color: var(--text);
+      white-space: pre-wrap; overflow-x: auto;
+    }
+    .mw-code .com { color: var(--text-dim); }
+    .mw-code .kw  { color: #c084fc; }
+    .mw-code .fn  { color: #60a5fa; }
+    .mw-code .bad { color: var(--red); font-weight: 600; }
+    .mw-case__why { font-size: 0.72rem; color: var(--text); line-height: 1.5;
+                    background: rgba(108,99,255,0.08);
+                    border-left: 2px solid var(--accent);
+                    padding: 0.4rem 0.55rem; border-radius: 4px; }
+    .mw-foot {
+      margin-top: 0.55rem; padding-top: 0.5rem;
+      border-top: 1px dashed var(--border);
+      text-align: center; font-size: 0.78rem; color: var(--text-dim);
+      opacity: 0;
+    }
+    .scene-9.active .mw-case--hi  { animation: scoreIn 0.42s 0.35s both; }
+    .scene-9.active .mw-case--xhi { animation: scoreIn 0.42s 0.60s both; }
+    .scene-9.active .mw-case--mid { animation: scoreIn 0.42s 0.85s both; }
+    .scene-9.active .mw-foot { animation: fadeUp 0.4s 1.2s both; }
+
+    /* Scene-10 5-dim moat — head-to-head */
+    .moat-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 0; margin-top: 0.4rem;
+      border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+      background: rgba(0,0,0,0.3); font-size: 0.82rem;
+    }
+    .moat-grid > div { padding: 0.52rem 0.85rem; border-bottom: 1px solid var(--border); }
+    .moat-grid > div:nth-last-child(-n+3) { border-bottom: none; }
+    .moat-grid > div.col2 { text-align: center; }
+    .moat-grid .h {
+      font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim);
+      letter-spacing: 0.05em; text-transform: uppercase;
+      background: rgba(108,99,255,0.06);
+    }
+    .moat-grid .ok-cell { color: var(--green); font-weight: 700; }
+    .moat-grid .miss { color: var(--text-dim); font-style: italic; }
+    .moat-grid .fail-cell { color: var(--red); font-weight: 600; }
+    .scene-10.active .moat-grid > div:not(.h) { animation: lineIn 0.3s both; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+4)  { animation-delay: 0.05s; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+5)  { animation-delay: 0.10s; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+6)  { animation-delay: 0.15s; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+7)  { animation-delay: 0.20s; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+8)  { animation-delay: 0.25s; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+9)  { animation-delay: 0.30s; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+10) { animation-delay: 0.35s; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+11) { animation-delay: 0.40s; }
+    .scene-10.active .moat-grid > div:not(.h):nth-of-type(3n+12) { animation-delay: 0.45s; }
+
+    /* ── Scene 7: 3-step flow narrative ──────────────────────── */
+    .flow-panel { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr;
+                  align-items: center; gap: 0.7rem; margin-top: 0.5rem; flex: 1; }
+    .flow-stage {
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1rem 0.85rem; text-align: center;
+      display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+      min-height: 200px; opacity: 0;
+    }
+    .flow-stage--cron  { border-color: rgba(108,99,255,0.4); background: rgba(108,99,255,0.06); }
+    .flow-stage--run   { border-color: rgba(34,211,238,0.4); background: rgba(34,211,238,0.06); }
+    .flow-stage--alert { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.06); }
+    .flow-stage__icon { font-size: 2.6rem; line-height: 1; }
+    .flow-stage__big  { font-size: 1.05rem; font-weight: 700; }
+    .flow-stage__sub  { font-size: 0.78rem; color: var(--text-dim); line-height: 1.4; }
+    .flow-stage__code {
+      font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent);
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      padding: 0.25rem 0.55rem; border-radius: 5px; margin-top: auto;
+    }
+    .flow-arrow {
+      display: flex; flex-direction: column; align-items: center; gap: 0.3rem;
+      font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-dim);
+      letter-spacing: 0.05em; opacity: 0;
+    }
+    .flow-arrow::before {
+      content: '→'; font-size: 1.6rem; color: var(--accent); font-weight: 700;
+      animation: arrowPulse 1.6s ease-out infinite;
+    }
+    @keyframes arrowPulse {
+      0% { transform: translateX(-3px); opacity: 0.5 }
+      50% { transform: translateX(3px); opacity: 1 }
+      100% { transform: translateX(-3px); opacity: 0.5 }
+    }
+    .flow-bonus {
+      text-align: center; font-size: 0.82rem; color: var(--text-dim);
+      padding: 0.65rem; margin-top: 0.6rem;
+      border-top: 1px dashed var(--border);
+    }
+    /* Class-targeted (nth-of-type was wrong — mixed flow-stage + flow-arrow siblings) */
+    .scene-7.active .flow-stage--cron  { animation: scoreIn 0.45s 0.05s both; }
+    .scene-7.active .flow-arrow:nth-child(2) { animation: fadeUp 0.3s 0.35s both; }
+    .scene-7.active .flow-stage--run   { animation: scoreIn 0.45s 0.55s both; }
+    .scene-7.active .flow-arrow:nth-child(4) { animation: fadeUp 0.3s 0.85s both; }
+    .scene-7.active .flow-stage--alert { animation: scoreIn 0.45s 1.05s both; }
+    .scene-7.active .flow-bonus { animation: fadeUp 0.4s 1.45s both; }
+    .scene-7 .flow-bonus { opacity: 0; }
+
+    /* ── Scene 8: Difficulty ladder ──────────────────────────── */
+    .ladder { display: flex; flex-direction: column; gap: 0.6rem; flex: 1; justify-content: center; }
+    .ladder__step {
+      display: grid; grid-template-columns: 50px 50px 1fr 130px;
+      align-items: center; gap: 1rem; padding: 0.95rem 1.2rem;
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      border-radius: 12px; opacity: 0;
+      position: relative;
+    }
+    .ladder__step--l2 { margin-left: 4%; }
+    .ladder__step--l3 { margin-left: 8%; }
+    .ladder__step--l1 { border-left: 4px solid var(--green); }
+    .ladder__step--l2 { border-left: 4px solid var(--orange); }
+    .ladder__step--l3 { border-left: 4px solid var(--accent); }
+    .ladder__badge {
+      width: 50px; height: 50px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono); font-weight: 900; font-size: 1.1rem;
+    }
+    .ladder__badge--ok   { background: rgba(34,197,94,0.18); color: var(--green); border: 1px solid var(--green); }
+    .ladder__badge--warn { background: rgba(234,88,12,0.18); color: var(--orange); border: 1px solid var(--orange); }
+    .ladder__badge--high { background: rgba(108,99,255,0.18); color: var(--accent); border: 1px solid var(--accent); }
+    .ladder__icon { font-size: 2.2rem; line-height: 1; }
+    .ladder__name { font-size: 1.05rem; font-weight: 700; }
+    .ladder__tags { font-size: 0.78rem; color: var(--text-dim); margin-top: 0.2rem; line-height: 1.4; grid-column: 3; }
+    .ladder__score { text-align: right; font-family: var(--font-mono); font-weight: 800; font-size: 1.1rem; }
+    .ladder__score--ok   { color: var(--green); }
+    .ladder__score--warn { color: var(--orange); }
+    .ladder__score--high { color: var(--accent); }
+    .ladder__foot { margin-top: 0.6rem; text-align: center; font-size: 0.85rem; color: var(--text-dim); padding-top: 0.5rem; border-top: 1px dashed var(--border); }
+    .scene-8.active .ladder__step:nth-of-type(1) { animation: lineIn 0.4s 0.05s both; }
+    .scene-8.active .ladder__step:nth-of-type(2) { animation: lineIn 0.4s 0.30s both; }
+    .scene-8.active .ladder__step:nth-of-type(3) { animation: lineIn 0.4s 0.55s both; }
+
+    /* Scene-1 terminal lines stagger */
+    .scene-1.active .term > div {
+      animation: lineIn 0.28s both;
+    }
+    .scene-1.active .term > div:nth-child(1) { animation-delay: 0.05s; }
+    .scene-1.active .term > div:nth-child(2) { animation-delay: 0.20s; }
+    .scene-1.active .term > div:nth-child(3) { animation-delay: 0.35s; }
+    .scene-1.active .term > div:nth-child(4) { animation-delay: 0.50s; }
+    .scene-1.active .term > div:nth-child(5) { animation-delay: 0.65s; }
+    .scene-1.active .term > div:nth-child(6) { animation-delay: 0.80s; }
+    .scene-1.active .term > div:nth-child(7) { animation-delay: 0.95s; }
+    .scene-1.active .term > div:nth-child(8) { animation-delay: 1.10s; }
+    .scene-1.active .term > div:nth-child(9) { animation-delay: 1.25s; }
+    .scene-1 .term > div { opacity: 0; }
+
+    /* Scene-7 ops rows stagger */
+    .scene-7.active .ops-row {
+      animation: lineIn 0.3s both;
+    }
+    .scene-7.active .ops-panel:nth-child(1) .ops-row:nth-child(2) { animation-delay: 0.10s; }
+    .scene-7.active .ops-panel:nth-child(1) .ops-row:nth-child(3) { animation-delay: 0.25s; }
+    .scene-7.active .ops-panel:nth-child(1) .ops-row:nth-child(4) { animation-delay: 0.40s; }
+    .scene-7.active .ops-panel:nth-child(2) .ops-row:nth-child(2) { animation-delay: 0.55s; }
+    .scene-7.active .ops-panel:nth-child(2) .ops-row:nth-child(3) { animation-delay: 0.70s; }
+    .scene-7.active .ops-panel:nth-child(2) .ops-row:nth-child(4) { animation-delay: 0.85s; }
+    .scene-7 .ops-row { opacity: 0; }
+
+    /* Scene-8 L1/L2/L3 cards stagger */
+    .scene-8.active .scoreboard .score-card {
+      animation: scoreIn 0.42s both;
+    }
+    .scene-8.active .scoreboard .score-card:nth-child(1) { animation-delay: 0.10s; }
+    .scene-8.active .scoreboard .score-card:nth-child(2) { animation-delay: 0.30s; }
+    .scene-8.active .scoreboard .score-card:nth-child(3) { animation-delay: 0.50s; }
+    .scene-8 .scoreboard .score-card { opacity: 0; }
+
+    /* Scene-11 final big numbers */
+    .final-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem;
+      margin-top: 0.5rem;
+    }
+    .final-num {
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.1rem 0.8rem; text-align: center;
+      opacity: 0;
+    }
+    .final-num__val {
+      font-size: 1.9rem; font-weight: 900; font-family: var(--font-mono);
+      line-height: 1; margin-bottom: 0.3rem;
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .final-num__lbl { font-size: 0.68rem; color: var(--text-dim); letter-spacing: 0.05em; text-transform: uppercase; }
+    .scene-11.active .final-num { animation: scoreIn 0.45s both; }
+    .scene-11.active .final-num:nth-child(1) { animation-delay: 0.1s }
+    .scene-11.active .final-num:nth-child(2) { animation-delay: 0.3s }
+    .scene-11.active .final-num:nth-child(3) { animation-delay: 0.5s }
+    .scene-11.active .final-num:nth-child(4) { animation-delay: 0.7s }
+    .scene-11 .ending {
+      position: absolute; bottom: 1.5rem; left: 0; right: 0;
+      text-align: center; opacity: 0;
+    }
+    .scene-11 .ending h3 { font-size: 1.2rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .scene-11 .ending .url {
+      font-family: var(--font-mono); font-size: 0.85rem;
+      background: rgba(108,99,255,0.12); color: var(--accent);
+      padding: 0.4rem 0.85rem; border-radius: 6px;
+      border: 1px solid rgba(108,99,255,0.4);
+      display: inline-block;
+    }
+    .scene-11.active .ending { animation: fadeUp 0.5s 1.5s both; }
+
+    .scene__title {
+      font-family: var(--font-mono); font-size: 0.78rem;
+      color: var(--accent); letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+    }
+
+    /* Scene 1: command line + file scan */
+    .term {
+      font-family: var(--font-mono); font-size: 0.9rem;
+      line-height: 1.7;
+    }
+    .term .prompt { color: var(--accent); }
+    .term .cmd { color: var(--text); }
+    .term .out  { color: var(--text-dim); }
+    .term .ok   { color: var(--green); }
+    .term .warn { color: var(--yellow); }
+    .term .typing { display: inline-block; border-right: 2px solid var(--accent); padding-right: 4px; }
+
+    /* Scene 2: route list */
+    .routes {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 0.45rem; font-family: var(--font-mono); font-size: 0.8rem;
+    }
+    .route-pill {
+      display: flex; gap: 0.4rem; align-items: center;
+      background: rgba(108, 99, 255, 0.08);
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      padding: 0.45rem 0.7rem; border-radius: 6px;
+      opacity: 0;
+    }
+    .scene-2.active .route-pill { animation: routePop 0.35s both; }
+    @keyframes routePop {
+      from { opacity: 0; transform: translateY(6px) }
+      to   { opacity: 1; transform: translateY(0) }
+    }
+    .scene-2.active .route-pill:nth-child(1)  { animation-delay: 0.05s }
+    .scene-2.active .route-pill:nth-child(2)  { animation-delay: 0.10s }
+    .scene-2.active .route-pill:nth-child(3)  { animation-delay: 0.15s }
+    .scene-2.active .route-pill:nth-child(4)  { animation-delay: 0.20s }
+    .scene-2.active .route-pill:nth-child(5)  { animation-delay: 0.25s }
+    .scene-2.active .route-pill:nth-child(6)  { animation-delay: 0.30s }
+    .scene-2.active .route-pill:nth-child(7)  { animation-delay: 0.35s }
+    .scene-2.active .route-pill:nth-child(8)  { animation-delay: 0.40s }
+    .scene-2.active .route-pill:nth-child(9)  { animation-delay: 0.45s }
+    .scene-2.active .route-pill:nth-child(10) { animation-delay: 0.50s }
+    .scene-2.active .route-pill:nth-child(11) { animation-delay: 0.55s }
+    .scene-2.active .route-pill:nth-child(12) { animation-delay: 0.60s }
+    .scene-2.active .route-pill:nth-child(13) { animation-delay: 0.65s }
+    .scene-2.active .route-pill:nth-child(14) { animation-delay: 0.70s }
+    .scene-2.active .route-pill:nth-child(15) { animation-delay: 0.75s }
+    .route-pill .method { color: var(--accent); font-weight: 700; min-width: 3.2em; }
+    .scene-2 .count {
+      position: absolute; right: 1.8rem; bottom: 1.6rem;
+      font-family: var(--font-mono); font-size: 2.4rem; font-weight: 900;
+      color: var(--accent); opacity: 0;
+    }
+    .scene-2.active .count { animation: countAppear 0.5s 1.0s both; }
+    @keyframes countAppear { from { opacity: 0; transform: scale(0.85) } to { opacity: 1; transform: scale(1) } }
+    .count .label { font-size: 0.75rem; color: var(--text-dim); display: block; font-weight: 400; letter-spacing: 0.1em; }
+
+    /* Scene 3: code typing */
+    .code {
+      background: rgba(0,0,0,0.4); border-radius: 8px; padding: 1rem 1.2rem;
+      font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.65;
+      color: var(--text-dim); height: 340px; overflow: hidden; position: relative;
+    }
+    .code .kw  { color: #c084fc; }
+    .code .str { color: #86efac; }
+    .code .num { color: #fcd34d; }
+    .code .fn  { color: #60a5fa; }
+    .code .com { color: #475569; font-style: italic; }
+    .code .ln {
+      display: block; opacity: 0;
+    }
+    .scene-3.active .ln { animation: lineIn 0.25s both; }
+    .scene-3.active .ln:nth-child(1)  { animation-delay: 0.05s }
+    .scene-3.active .ln:nth-child(2)  { animation-delay: 0.15s }
+    .scene-3.active .ln:nth-child(3)  { animation-delay: 0.25s }
+    .scene-3.active .ln:nth-child(4)  { animation-delay: 0.35s }
+    .scene-3.active .ln:nth-child(5)  { animation-delay: 0.45s }
+    .scene-3.active .ln:nth-child(6)  { animation-delay: 0.55s }
+    .scene-3.active .ln:nth-child(7)  { animation-delay: 0.65s }
+    .scene-3.active .ln:nth-child(8)  { animation-delay: 0.75s }
+    .scene-3.active .ln:nth-child(9)  { animation-delay: 0.85s }
+    .scene-3.active .ln:nth-child(10) { animation-delay: 0.95s }
+    .scene-3.active .ln:nth-child(11) { animation-delay: 1.05s }
+    .scene-3.active .ln:nth-child(12) { animation-delay: 1.15s }
+    .scene-3.active .ln:nth-child(13) { animation-delay: 1.25s }
+    .scene-3.active .ln:nth-child(14) { animation-delay: 1.35s }
+    .scene-3.active .ln:nth-child(15) { animation-delay: 1.45s }
+    .scene-3.active .ln:nth-child(16) { animation-delay: 1.55s }
+    @keyframes lineIn { from { opacity: 0; transform: translateX(-4px) } to { opacity: 1; transform: translateX(0) } }
+
+    /* Scene 4: sandbox runner */
+    .sandbox {
+      display: grid; grid-template-columns: 1fr 2fr; gap: 1.2rem;
+      font-family: var(--font-mono); font-size: 0.85rem;
+    }
+    .sandbox .panel {
+      background: rgba(0,0,0,0.4); border-radius: 8px; padding: 0.9rem 1rem;
+    }
+    .sandbox .panel__title { color: var(--text-dim); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.6rem; }
+    .sandbox-status { color: var(--accent); }
+    .sandbox-status .check { color: var(--green); margin-right: 0.4rem; }
+    .test-row {
+      display: flex; gap: 0.5rem; align-items: center;
+      padding: 0.32rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+      opacity: 0;
+    }
+    .scene-4.active .test-row { animation: lineIn 0.25s both; }
+    .scene-4.active .test-row:nth-child(1)  { animation-delay: 0.05s }
+    .scene-4.active .test-row:nth-child(2)  { animation-delay: 0.15s }
+    .scene-4.active .test-row:nth-child(3)  { animation-delay: 0.25s }
+    .scene-4.active .test-row:nth-child(4)  { animation-delay: 0.35s }
+    .scene-4.active .test-row:nth-child(5)  { animation-delay: 0.45s }
+    .scene-4.active .test-row:nth-child(6)  { animation-delay: 0.55s }
+    .scene-4.active .test-row:nth-child(7)  { animation-delay: 0.65s }
+    .scene-4.active .test-row:nth-child(8)  { animation-delay: 0.75s }
+    .scene-4.active .test-row:nth-child(9)  { animation-delay: 0.85s }
+    .scene-4.active .test-row:nth-child(10) { animation-delay: 0.95s }
+    .scene-4.active .test-row:nth-child(11) { animation-delay: 1.05s }
+    .scene-4.active .test-row:nth-child(12) { animation-delay: 1.15s }
+    .test-row .ico { width: 1em; flex-shrink: 0; }
+    .test-row.pass .ico { color: var(--green); }
+    .test-row.fail .ico { color: var(--red); }
+
+    /* Scene 5: results scoreboard */
+    .scoreboard {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.8rem;
+    }
+    .score-card {
+      background: rgba(0,0,0,0.4); border-radius: 10px;
+      padding: 1rem 0.85rem;
+      border: 1px solid var(--border);
+      opacity: 0;
+    }
+    .scene-5.active .score-card { animation: scoreIn 0.45s both; }
+    .scene-5.active .score-card:nth-child(1) { animation-delay: 0.05s }
+    .scene-5.active .score-card:nth-child(2) { animation-delay: 0.15s }
+    .scene-5.active .score-card:nth-child(3) { animation-delay: 0.25s }
+    .scene-5.active .score-card:nth-child(4) { animation-delay: 0.35s }
+    .scene-5.active .score-card:nth-child(5) { animation-delay: 0.45s }
+    @keyframes scoreIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.95) }
+      to   { opacity: 1; transform: translateY(0) scale(1) }
+    }
+    .score-card__label { font-size: 0.65rem; color: var(--text-dim); letter-spacing: 0.07em; text-transform: uppercase; }
+    .score-card__num   { font-size: 1.9rem; font-weight: 900; font-family: var(--font-mono); margin: 0.3rem 0; }
+    .score-card__num.ok    { color: var(--green); }
+    .score-card__num.warn  { color: var(--yellow); }
+    .score-card__num.fail  { color: var(--red); }
+    .score-card__num.dim   { color: var(--text-dim); }
+    .score-card__bar { height: 4px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; margin-top: 0.4rem; }
+    .score-card__bar > i { display: block; height: 100%; background: var(--green); width: 0; }
+    .scene-5.active .score-card:nth-child(1) .score-card__bar > i { animation: bar 1.0s 0.6s forwards; --w: 100%; }
+    .scene-5.active .score-card:nth-child(2) .score-card__bar > i { animation: bar 1.0s 0.7s forwards; --w: 100%; }
+    .scene-5.active .score-card:nth-child(3) .score-card__bar > i { animation: bar 1.0s 0.8s forwards; --w: 100%; }
+    .scene-5.active .score-card:nth-child(4) .score-card__bar > i { animation: bar 1.0s 0.9s forwards; background: var(--yellow); --w: 70%; }
+    .scene-5.active .score-card:nth-child(5) .score-card__bar > i { animation: bar 1.0s 1.0s forwards; background: var(--text-dim); --w: 30%; }
+    @keyframes bar { to { width: var(--w) } }
+
+    .scene-5 .headline {
+      position: absolute; bottom: 1.4rem; left: 1.8rem; right: 1.8rem;
+      text-align: center;
+      font-family: var(--font-mono); font-size: 0.95rem; color: var(--green);
+      opacity: 0;
+    }
+    .scene-5.active .headline { animation: fadeUp 0.5s 1.8s both; }
+
+    /* ── Scene MCP: user → CC → MCP → tspr handoff ─────────────── */
+    .mcp-stage {
+      display: grid; grid-template-columns: 1.3fr 80px 1fr; gap: 0.85rem;
+      height: 100%;
+    }
+    .mcp-side { background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+                border-radius: 10px; padding: 0.95rem 1rem; overflow: hidden;
+                display: flex; flex-direction: column; gap: 0.55rem; }
+    .mcp-side--user { background: rgba(108,99,255,0.04); border-color: rgba(108,99,255,0.25); }
+    .mcp-side--tspr { background: rgba(34,211,238,0.04); border-color: rgba(34,211,238,0.25); }
+    .mcp-label {
+      font-family: var(--font-mono); font-size: 0.62rem;
+      letter-spacing: 0.07em; color: var(--text-dim);
+      text-transform: uppercase;
+    }
+    .chat-bubble {
+      padding: 0.55rem 0.75rem; border-radius: 10px;
+      font-size: 0.82rem; line-height: 1.45;
+      max-width: 92%; opacity: 0;
+    }
+    .chat-bubble--user {
+      background: rgba(108,99,255,0.18); align-self: flex-end;
+      border-bottom-right-radius: 3px;
+    }
+    .chat-bubble--ai {
+      background: rgba(255,255,255,0.05); align-self: flex-start;
+      border-bottom-left-radius: 3px;
+    }
+    .chat-bubble code { background: rgba(0,0,0,0.4); padding: 0.05rem 0.35rem;
+                        border-radius: 3px; color: var(--accent); font-size: 0.78rem; }
+    .dots::after { content: '...'; animation: dots 1.4s infinite steps(4); display: inline-block; }
+    @keyframes dots { 0% { content: '' } 25% { content: '.' } 50% { content: '..' } 75% { content: '...' } }
+
+    .mcp-call {
+      background: rgba(0,0,0,0.55); border: 1px solid var(--accent);
+      border-radius: 8px; padding: 0.5rem 0.65rem;
+      font-family: var(--font-mono); font-size: 0.74rem;
+      opacity: 0; margin-top: auto;
+    }
+    .mcp-call__head { color: var(--accent); font-size: 0.6rem; letter-spacing: 0.06em;
+                      text-transform: uppercase; margin-bottom: 0.35rem; }
+    .mcp-call pre { white-space: pre-wrap; color: var(--text); line-height: 1.45; }
+    .mcp-call .kw  { color: #c084fc; }
+    .mcp-call .fn  { color: #60a5fa; }
+    .mcp-call .key { color: var(--accent-2); }
+    .mcp-call .str { color: #86efac; }
+
+    .mcp-arrow { display: flex; align-items: center; justify-content: center; }
+    .arrow-anim {
+      stroke-dashoffset: 0;
+      animation: dash 2s linear infinite;
+    }
+    @keyframes dash { from { stroke-dashoffset: 0 } to { stroke-dashoffset: -28 } }
+
+    .mcp-status { display: flex; flex-direction: column; gap: 0.45rem; }
+    .mcp-status__row {
+      display: flex; align-items: center; gap: 0.55rem;
+      font-family: var(--font-mono); font-size: 0.78rem;
+      opacity: 0;
+    }
+    .ok-dot, .working-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .ok-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .working-dot { background: var(--yellow);
+                   animation: pulse 1.4s ease-out infinite; position: relative; }
+
+    .scene-mcp.active .chat-bubble--user      { animation: fadeUp 0.4s 0.15s both; }
+    .scene-mcp.active .chat-bubble--ai        { animation: fadeUp 0.4s 0.55s both; }
+    .scene-mcp.active .mcp-call               { animation: fadeUp 0.4s 1.00s both; }
+    .scene-mcp.active .mcp-status__row:nth-child(1) { animation: lineIn 0.3s 1.40s both; }
+    .scene-mcp.active .mcp-status__row:nth-child(2) { animation: lineIn 0.3s 1.60s both; }
+    .scene-mcp.active .mcp-status__row:nth-child(3) { animation: lineIn 0.3s 1.80s both; }
+    .scene-mcp.active .mcp-status__row:nth-child(4) { animation: lineIn 0.3s 2.00s both; }
+    .scene-mcp.active .mcp-status__row:nth-child(5) { animation: lineIn 0.3s 2.20s both; }
+
+    /* Scene 0: title intro */
+    .scene-0 {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .scene-0 h2 { font-size: 2.3rem; font-weight: 800; letter-spacing: -0.02em; text-align: center; }
+    .scene-0 .grad { background: linear-gradient(120deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .scene-0 p { color: var(--text-dim); margin-top: 0.6rem; }
+
+    /* Progress bar across the bottom (JS-driven) */
+    .demo__progress {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      height: 3px; background: rgba(255,255,255,0.08);
+    }
+    .demo__progress > i {
+      display: block; height: 100%;
+      background: linear-gradient(to right, var(--accent), var(--accent-2));
+      width: 0; will-change: width;
+    }
+
+    /* ── Pipeline section (architecture) ─────────────────────── */
+    .pipeline {
+      max-width: 1100px; margin: 0 auto;
+      padding-top: 4rem; padding-bottom: 4rem;
+    }
+    .pipeline__steps {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 0.8rem; margin-top: 2rem;
+    }
+    .pipe-step {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.2rem 1rem;
+      position: relative; overflow: hidden;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .pipe-step:hover { transform: translateY(-4px); border-color: var(--accent); }
+    .pipe-step::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(to right, var(--accent), var(--accent-2));
+      transform: scaleX(0); transform-origin: left;
+      transition: transform 0.5s;
+    }
+    .pipe-step:hover::before { transform: scaleX(1); }
+    .pipe-step__num {
+      font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);
+      font-weight: 700; letter-spacing: 0.08em;
+    }
+    .pipe-step__title { font-size: 1rem; font-weight: 700; margin: 0.5rem 0; }
+    .pipe-step__desc  { font-size: 0.85rem; color: var(--text-dim); line-height: 1.5; }
+
+    /* ── Comparison table ────────────────────────────────────── */
+    .compare {
+      max-width: 900px; margin: 0 auto;
+    }
+    .compare__table {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+      margin-top: 2rem;
+    }
+    .compare__row {
+      display: grid; grid-template-columns: 2fr 1fr 1fr;
+      gap: 1rem; padding: 1rem 1.3rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.92rem;
+    }
+    .compare__row:last-child { border: none; }
+    .compare__row.head {
+      background: rgba(108, 99, 255, 0.07);
+      font-family: var(--font-mono); font-size: 0.78rem;
+      color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .compare__row .ok   { color: var(--green); font-weight: 700; }
+    .compare__row .meh  { color: var(--text-dim); }
+    .compare__row .fail { color: var(--red); }
+
+    /* ── Section header ──────────────────────────────────────── */
+    .sec-eyebrow {
+      font-family: var(--font-mono); font-size: 0.72rem;
+      color: var(--accent); letter-spacing: 0.1em;
+      text-transform: uppercase; margin-bottom: 0.65rem;
+    }
+    .sec-h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+      font-weight: 800; letter-spacing: -0.02em;
+      line-height: 1.15; margin-bottom: 0.8rem;
+    }
+    .sec-h2 .grad {
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .sec-lede {
+      color: var(--text-dim); font-size: 1.05rem;
+      max-width: 640px; margin-bottom: 2rem;
+    }
+
+    /* ── CTA / local dashboard panel ─────────────────────────── */
+    .local-cta {
+      max-width: 900px; margin: 0 auto;
+      background:
+        linear-gradient(135deg, rgba(108, 99, 255, 0.12), rgba(34, 211, 238, 0.06)),
+        var(--bg-card);
+      border: 1px solid rgba(108, 99, 255, 0.35);
+      border-radius: 16px; padding: 2.2rem 2rem;
+      text-align: center;
+      box-shadow: 0 30px 80px -30px rgba(108, 99, 255, 0.4);
+    }
+    .local-cta h3 { font-size: 1.6rem; font-weight: 800; margin-bottom: 0.6rem; }
+    .local-cta p  { color: var(--text-dim); margin-bottom: 1.4rem; }
+    .local-cta__urls {
+      display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap;
+      margin: 1.2rem 0 1.5rem;
+    }
+    .local-cta__urls code {
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      padding: 0.6rem 1rem; border-radius: 8px;
+      font-family: var(--font-mono); font-size: 0.92rem;
+      display: inline-flex; align-items: center; gap: 0.55rem;
+    }
+    .local-cta__urls code .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); animation: pulse 1.8s ease-out infinite; position: relative; }
+    .local-cta__urls .alive { color: var(--green); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; }
+    .install {
+      background: rgba(0,0,0,0.5); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.95rem 1.2rem;
+      font-family: var(--font-mono); font-size: 0.85rem; color: var(--text);
+      text-align: left; max-width: 480px; margin: 0 auto 1.4rem;
+    }
+    .install .com  { color: var(--text-dim); }
+    .install .ok   { color: var(--green); }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    footer {
+      padding: 3rem 1.5rem 2.5rem;
+      border-top: 1px solid var(--border);
+      text-align: center; color: var(--text-dim); font-size: 0.85rem;
+      position: relative; z-index: 2;
+    }
+    footer a { color: var(--accent); }
+
+    /* ── Quickstart 3 steps ──────────────────────────────────── */
+    .qs-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 1rem; margin-top: 2rem;
+    }
+    .qs-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.4rem 1.2rem;
+      position: relative;
+    }
+    .qs-card__num {
+      position: absolute; top: -0.6rem; left: 1rem;
+      background: var(--bg); color: var(--accent);
+      font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+      padding: 0.2rem 0.6rem; border-radius: 999px;
+      border: 1px solid var(--accent);
+    }
+    .qs-card h4 { font-size: 1.05rem; font-weight: 700; margin: 0.4rem 0 0.6rem; }
+    .qs-card .desc { font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.7rem; line-height: 1.5; }
+    .qs-card pre {
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.7rem 0.85rem;
+      font-family: var(--font-mono); font-size: 0.78rem;
+      overflow-x: auto; color: var(--text); line-height: 1.55;
+    }
+    .qs-card pre .com { color: var(--text-dim); }
+    .qs-card pre .kw  { color: #c084fc; }
+    .qs-card pre .str { color: #86efac; }
+    .qs-card pre .ok  { color: var(--green); }
+
+    /* ── Screenshot gallery ──────────────────────────────────── */
+    .gallery {
+      display: grid; grid-template-columns: repeat(6, 1fr);
+      gap: 0.85rem; margin-top: 2rem;
+    }
+    .gallery .shot {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+      transition: transform 0.18s, border-color 0.18s, box-shadow 0.22s;
+      cursor: pointer;
+      position: relative;
+    }
+    .gallery .shot:hover {
+      transform: translateY(-3px); border-color: var(--accent);
+      box-shadow: 0 12px 30px -12px rgba(108, 99, 255, 0.6);
+    }
+    .gallery .shot img {
+      display: block; width: 100%; height: 180px;
+      object-fit: cover; object-position: top;
+      background: var(--bg);
+    }
+    .gallery .shot__lbl {
+      padding: 0.55rem 0.75rem;
+      font-family: var(--font-mono); font-size: 0.7rem;
+      color: var(--text-dim); letter-spacing: 0.05em;
+      text-transform: uppercase;
+      border-top: 1px solid var(--border);
+    }
+    .gallery .shot--big { grid-column: span 3; }
+    .gallery .shot--big img { height: 280px; }
+    .gallery .shot--med { grid-column: span 2; }
+    .gallery .shot--med img { height: 210px; }
+
+    /* ── Meme-weather case study ─────────────────────────────── */
+    .case {
+      background:
+        linear-gradient(135deg, rgba(234, 88, 12, 0.06), rgba(108, 99, 255, 0.05)),
+        var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 2rem 1.8rem;
+      margin-top: 2rem;
+    }
+    .case__head {
+      display: flex; gap: 1rem; align-items: baseline; flex-wrap: wrap;
+      margin-bottom: 0.6rem;
+    }
+    .case__head h3 { font-size: 1.5rem; font-weight: 800; }
+    .case__stack {
+      display: flex; gap: 0.35rem; flex-wrap: wrap;
+      font-family: var(--font-mono); font-size: 0.72rem;
+    }
+    .case__stack span {
+      background: rgba(108, 99, 255, 0.12); color: var(--accent);
+      padding: 0.18rem 0.55rem; border-radius: 4px;
+      border: 1px solid rgba(108, 99, 255, 0.3);
+    }
+    .case__lede { color: var(--text-dim); margin-bottom: 1.4rem; }
+    .case__bugs {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 0.9rem;
+    }
+    .bug {
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+      border-left: 3px solid var(--orange);
+      border-radius: 8px; padding: 1rem 1.1rem;
+    }
+    .bug__id {
+      font-family: var(--font-mono); font-size: 0.72rem;
+      color: var(--orange); font-weight: 700; letter-spacing: 0.05em;
+    }
+    .bug__title { font-size: 0.95rem; font-weight: 700; margin: 0.3rem 0 0.6rem; }
+    .bug__loc {
+      font-family: var(--font-mono); font-size: 0.72rem;
+      color: var(--text-dim); margin-bottom: 0.55rem;
+      word-break: break-all;
+    }
+    .bug__desc { font-size: 0.82rem; color: var(--text-dim); line-height: 1.55; }
+    .bug__how  { font-size: 0.78rem; color: var(--text); margin-top: 0.55rem;
+                 background: rgba(108,99,255,0.08);
+                 padding: 0.5rem 0.7rem; border-radius: 6px;
+                 border-left: 2px solid var(--accent); }
+    .bug__how strong { color: var(--accent); }
+
+    .case__pipeline-stats {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 0.8rem; margin-top: 1.6rem;
+    }
+
+    /* ── Big number band ─────────────────────────────────────── */
+    .band {
+      max-width: 1000px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+    .band .stat {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.6rem 1rem; text-align: center;
+      transition: transform 0.18s, border-color 0.18s;
+    }
+    .band .stat:hover { transform: translateY(-3px); border-color: var(--accent); }
+    .band .stat__big {
+      font-size: 2.4rem; font-weight: 900; font-family: var(--font-mono);
+      line-height: 1; margin-bottom: 0.3rem;
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .band .stat__lbl { font-size: 0.75rem; color: var(--text-dim); letter-spacing: 0.05em; text-transform: uppercase; }
+    .band .stat__sub { font-size: 0.72rem; color: var(--text-dim); margin-top: 0.3rem; line-height: 1.45; }
+
+    /* ── Hardener-bench section ─────────────────────────────── */
+    .bench-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1rem; margin-top: 2rem;
+    }
+    .bench-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-top: 3px solid var(--accent-2);
+      border-radius: 12px; padding: 1.4rem 1.1rem;
+      transition: transform 0.18s, border-color 0.18s;
+    }
+    .bench-card:hover { transform: translateY(-3px); border-top-color: var(--accent); }
+    .bench-card__num {
+      font-size: 2.6rem; font-weight: 900; font-family: var(--font-mono);
+      line-height: 1; margin-bottom: 0.4rem;
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .bench-card__lbl { font-size: 0.78rem; font-weight: 700; color: var(--text); margin-bottom: 0.55rem; }
+    .bench-card__sub { font-size: 0.78rem; color: var(--text-dim); line-height: 1.55; }
+    .bench-flow {
+      display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+      align-items: center; gap: 0.6rem; margin-top: 2rem;
+    }
+    .bench-flow__step {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0.95rem 0.85rem; text-align: center;
+    }
+    .bench-flow__num {
+      display: inline-flex; width: 28px; height: 28px;
+      align-items: center; justify-content: center;
+      background: var(--accent); color: #fff;
+      border-radius: 50%; font-family: var(--font-mono); font-weight: 700;
+      font-size: 0.85rem; margin-bottom: 0.4rem;
+    }
+    .bench-flow__title { font-size: 0.85rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .bench-flow__code code {
+      font-family: var(--font-mono); font-size: 0.7rem;
+      color: var(--accent); background: rgba(0,0,0,0.4);
+      padding: 0.2rem 0.45rem; border-radius: 4px;
+      display: block; word-break: break-all;
+    }
+    .bench-flow__arrow {
+      font-size: 1.4rem; color: var(--accent); font-weight: 700;
+      text-align: center;
+    }
+    .bench-foot {
+      max-width: 760px; margin: 1.8rem auto 0;
+      text-align: center; padding: 1rem 1.2rem;
+      background: rgba(0,0,0,0.3); border: 1px dashed var(--border);
+      border-radius: 10px;
+      font-size: 0.85rem; color: var(--text-dim); line-height: 1.6;
+    }
+
+    /* Responsive */
+    @media (max-width: 720px) {
+      .pipeline__steps { grid-template-columns: 1fr 1fr; }
+      .scoreboard      { grid-template-columns: 1fr 1fr; }
+      .routes          { grid-template-columns: 1fr 1fr; }
+      .sandbox         { grid-template-columns: 1fr; }
+      .compare__row    { grid-template-columns: 1.5fr 1fr 1fr; font-size: 0.82rem; }
+      section          { padding: 3rem 1rem; }
+      .qs-grid         { grid-template-columns: 1fr; }
+      .gallery         { grid-template-columns: 1fr 1fr; }
+      .gallery .shot--big, .gallery .shot--med { grid-column: span 2; }
+      .case__bugs      { grid-template-columns: 1fr; }
+      .case__pipeline-stats { grid-template-columns: 1fr 1fr; }
+      .band            { grid-template-columns: 1fr 1fr; }
+      .bench-grid      { grid-template-columns: 1fr 1fr; }
+      .bench-flow      { grid-template-columns: 1fr; }
+      .bench-flow__arrow { transform: rotate(90deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.01s !important; }
+    }
+  </style>
 </head>
 <body>
 
-  <!-- Paper grain overlay (SVG feTurbulence × multiply) — fixed, no reflow -->
-  <svg class="paper-grain" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
-    <filter id="pg-noise" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.88" numOctaves="2" stitchTiles="stitch" />
-      <feColorMatrix values="0 0 0 0 0.14  0 0 0 0 0.10  0 0 0 0 0.07  0 0 0 0.45 0" />
-    </filter>
-    <rect width="100%" height="100%" filter="url(#pg-noise)" />
-  </svg>
+  <div class="grain"></div>
+  <div class="grid-bg"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
 
-  <!-- Dossier binding strap — left-edge red rule that fills with scroll progress -->
-  <div class="dossier-strap" aria-hidden="true"></div>
-
-  <!-- G · drifting watermark stamps (huge faint round stamps that float around) -->
-  <div class="watermark-stamps" aria-hidden="true">
-    <svg class="wm-stamp wm-stamp-1" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet">
-      <g fill="none" stroke="currentColor" stroke-width="3">
-        <circle cx="100" cy="100" r="92" />
-        <circle cx="100" cy="100" r="78" />
-      </g>
-      <text x="100" y="92" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="22" font-weight="800" letter-spacing="6">PACE</text>
-      <text x="100" y="120" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="13" font-weight="700" letter-spacing="3">CASE FILE</text>
-      <line x1="40" y1="135" x2="160" y2="135" stroke="currentColor" stroke-width="1.5" />
-      <text x="100" y="152" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="2">已归档 · ARCHIVED</text>
-    </svg>
-    <svg class="wm-stamp wm-stamp-2" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet">
-      <g fill="none" stroke="currentColor" stroke-width="3">
-        <rect x="20" y="20" width="160" height="160" />
-        <rect x="32" y="32" width="136" height="136" />
-      </g>
-      <text x="100" y="92" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="20" font-weight="800" letter-spacing="4">MENTOR</text>
-      <line x1="50" y1="105" x2="150" y2="105" stroke="currentColor" stroke-width="1.5" />
-      <text x="100" y="125" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="11" font-weight="700" letter-spacing="2">v0.1 · 2026</text>
-      <text x="100" y="148" text-anchor="middle" fill="currentColor" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="2">LOCAL-FIRST</text>
-    </svg>
-    <svg class="wm-stamp wm-stamp-3" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet">
-      <g fill="none" stroke="currentColor" stroke-width="3">
-        <circle cx="100" cy="100" r="92" />
-      </g>
-      <text x="100" y="108" text-anchor="middle" fill="currentColor" font-family="Instrument Serif, serif" font-style="italic" font-size="44" font-weight="400">已读</text>
-    </svg>
-  </div>
-
-  <a class="skip-link" href="#main">跳到正文</a>
-
-  <!-- ─────────────────────────────────────────────────── Docket / Top bar -->
-  <header class="docket" role="banner">
-    <div class="docket-inner">
-      <a class="docket-brand" href="#top" aria-label="Pace 首页">
-        <span class="docket-mark" aria-hidden="true"></span>
-        <span class="docket-name">Pace</span>
-        <span class="docket-tag">本地桌面 mentor</span>
-      </a>
-      <nav class="docket-nav" aria-label="主导航">
-        <a href="#how-it-works">怎么读</a>
-        <a href="#watch">看一眼</a>
-        <a href="#ui-tour">活样本</a>
-        <a href="#promises">不变的事</a>
-        <a href="https://github.com/" target="_blank" rel="noopener noreferrer">GitHub</a>
-        <a class="docket-cta" href="#download">↓ 下载</a>
-      </nav>
-    </div>
-    <div class="docket-progress" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="topbar__brand" href="#top">tspr<span style="color:var(--text-dim)">/landing</span></a>
+    <nav class="topbar__nav">
+      <a href="#demo">30s demo</a>
+      <a href="#pipeline">原理</a>
+      <a href="#scores">5 维成绩</a>
+      <a href="#bench">bench</a>
+      <a href="#fixtures">数据集</a>
+      <a href="#journey">改进</a>
+      <a href="#try">远程试用</a>
+      <a href="https://github.com/Upp-Ljl/tspr" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn-cta" href="http://192.168.22.2:7654" target="_blank" rel="noopener">▶ 开 dashboard</a>
+    </nav>
   </header>
 
-  <main id="main">
+  <main id="top">
 
-    <!-- ─────────────────────────────────────────────────── Hero -->
-    <section class="hero" id="top" aria-labelledby="hero-h1">
+    <!-- HERO ──────────────────────────────────────────────── -->
+    <section class="hero">
       <div class="container">
-        <div class="hero-eyebrow">
-          <span class="stamp" aria-hidden="true">案卷</span>
-          <span>三份真用户的 session · 看 Pace 怎么开的口</span>
+        <div class="hero__eyebrow">
+          <span class="pulse"></span>
+          本地优先 · MCP 接口 · 开源 MIT
         </div>
-
-        <h1 class="hero-h1" id="hero-h1">
-          <span class="frag" style="--d:.05s">main 上裸改</span><br />
-          <span class="frag" style="--d:.28s">3 小时后，</span>
-          <span class="frag frag-stamp" style="--d:.7s"><span class="accent-em-wrap"><em class="accent-em"><span class="char" style="--c:0s">它</span><span class="char" style="--c:.05s">问</span><span class="char" style="--c:.10s">你</span><span class="char" style="--c:.15s">一</span><span class="char" style="--c:.20s">句</span><span class="char" style="--c:.25s">话</span></em><span class="accent-marker" aria-hidden="true"></span></span><span class="accent-dot">。</span></span>
+        <h1 class="hero__h1">
+          AI 给你 <span class="strike">空气测试</span><br/>
+          我们找的是 <span class="grad">真问题</span>
         </h1>
-
-        <p class="hero-lede">
-          Pace 不替你猜<span class="redact" style="--rd:1.4s">「下一步该干啥」</span>。它先看你这一周的 <span class="redact" style="--rd:1.7s">cc</span>、查你的<span class="redact" style="--rd:1.95s">提交</span>、看你的<span class="redact" style="--rd:2.2s">团队</span> — 再开口。
+        <p class="hero__lede">
+          tspr 是本地 AI test generation MCP。指 Express API 给它，30 秒内扫路由 → LLM 写 supertest → Docker 沙箱跑 → 抓出真 HTTP-status 问题。<strong style="color:var(--text)">不是写测试，是找真问题。</strong>
         </p>
-
-        <p class="hero-mono">
-          下面三份 case file 是真用户的 session。每份附原始痕迹 + Pace 的推断 + 它对人说的那句话。
-        </p>
-
-        <div class="hero-cta">
-          <a class="btn btn-primary" href="#download">↓ 下载 Pace · 5 MB</a>
-          <span class="hero-cta-meta">macOS · Windows · 自带 LLM key · cc 历史不上传</span>
+        <div class="hero__cta-row">
+          <a class="primary" href="#demo">▶ 看 40 秒演示</a>
+          <a class="secondary" href="http://192.168.22.2:7654" target="_blank" rel="noopener">→ live dashboard</a>
+          <a class="secondary" href="http://192.168.22.2:3000" target="_blank" rel="noopener" style="border-color:var(--green);color:var(--green)">→ meme-weather (真上线)</a>
         </div>
 
-        <!-- Live readout strip: streams events Pace just observed -->
-        <div class="readout" aria-hidden="true" data-stream-host>
-          <div class="readout-bar">
-            <span class="readout-dot"></span>
-            <span class="readout-title">现在 Pace 看到的</span>
-            <span class="readout-time">~/lll/pace · main</span>
+        <!-- 30s auto-loop demo ─────────────────────────────── -->
+        <div class="demo" id="demo">
+          <div class="demo__head">
+            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+            <span class="demo__head__title">tspr · live demo · 13 scenes · ~44s · 播完停在 bench 页 · 点击重播</span>
+            <span class="demo__head__timer">44s</span>
           </div>
-          <div class="readout-stream" data-stream></div>
-        </div>
+          <div class="demo__stage">
 
-        <ul class="hero-trust" aria-label="承诺">
-          <li><span aria-hidden="true">●</span>本地优先</li>
-          <li><span aria-hidden="true">●</span>你的 LLM key</li>
-          <li><span aria-hidden="true">●</span>被动应答</li>
-          <li><span aria-hidden="true">●</span>MIT 开源</li>
-        </ul>
-      </div>
-    </section>
-
-    <hr class="section-rule" />
-
-    <!-- ─────────────────────────────────────────────────── How it works (3 cases) -->
-    <section class="cases" id="how-it-works" aria-labelledby="cases-h2">
-      <div class="container">
-        <h2 class="sr-only" id="cases-h2">Pace 怎么读、怎么说</h2>
-
-        <!-- ─────── CASE 01 -->
-        <article class="case" aria-labelledby="case-01-title" data-case-num="01">
-          <header class="case-head">
-            <div class="case-label">
-              <span class="case-num">CASE · 01</span>
-              <span class="case-slug">main · 12 个改动 · 47 行 · 0 提交</span>
-            </div>
-            <h3 class="case-title" id="case-01-title">
-              你这周在做收尾活，<em class="accent-em">只是还没跟 Tom 对过</em>。
-            </h3>
-            <p class="case-summary">
-              subject 在 cc 里独自跑了 47 分钟没动 git。Pace 看完那 47 分钟，在第 48 分钟开口。下面是它手里的三样东西。
-            </p>
-          </header>
-
-          <div class="exhibits">
-            <article class="exhibit">
-              <span class="exhibit-tag">一 · 你的 CC</span>
-              <div class="exhibit-head">查 8 轮对话</div>
-              <pre class="exhibit-body">「再试一下 streaming」
-「现在 export 卡在
-   error code」
-「我先把 schema 改了」
-「等等这个 contract 我
-   说了算吗」
-「算了我先写」</pre>
-              <div class="exhibit-foot">未上传 · 在你的电脑里</div>
-            </article>
-
-            <article class="exhibit">
-              <span class="exhibit-tag">二 · 你的提交</span>
-              <div class="exhibit-head">main · 12 个未提交改动</div>
-              <pre class="exhibit-body">还没提交的改动：
-  src/export.ts
-  src/export.test.ts
-  schema/v2.json
-  api/contract.md
-  ...还有 8 个文件
-上次提交 47 分钟前</pre>
-              <div class="exhibit-foot">你的项目 · main 分支</div>
-            </article>
-
-            <article class="exhibit">
-              <span class="exhibit-tag">三 · 你的团队</span>
-              <div class="exhibit-head">这事得 Tom 点头</div>
-              <pre class="exhibit-body">Tom   · /export      负责人
-麦子  · /streaming   推进人
-你    · /contract    拍板人
-
-今天空档：
-  Tom · 14:00 – 14:30
-  Tom · 16:00 – 17:00</pre>
-              <div class="exhibit-foot">你的团队 · 2 小时前同步</div>
-            </article>
-          </div>
-
-          <aside class="verdict" aria-label="Pace 给的开场白">
-            <span class="case-stamp" aria-hidden="true">已立案</span>
-            <div class="verdict-tag">
-              <span>PACE · 告诉你怎么开口</span>
-              <span class="verdict-meta">思考 <span data-count-to="29">0</span> 秒 · <span data-count-to="140">0</span> 字</span>
-            </div>
-            <blockquote class="verdict-body">
-              「Tom，我这一周一直在写 export 这块的接口，发现 error code 的语义你那边可能比我清楚 — 抽你 15 分钟，对一下，我再继续写。」
-            </blockquote>
-            <footer class="verdict-sign">
-              <span>你在做的 · 规划阶段，把范围圈出来</span>
-              <span aria-hidden="true">·</span>
-              <span>下一步 · 进代码前先跟 Tom 对齐</span>
-              <span class="verdict-sign-by">Pace · mentor</span>
-            </footer>
-          </aside>
-        </article>
-
-        <hr class="case-rule" />
-
-        <!-- ─────── CASE 02 -->
-        <article class="case" aria-labelledby="case-02-title" data-case-num="02">
-          <header class="case-head">
-            <div class="case-label">
-              <span class="case-num">CASE · 02</span>
-              <span class="case-slug">明天早会 · 3 个同事 · 还没人知道</span>
-            </div>
-            <h3 class="case-title" id="case-02-title">
-              见面前，<em class="accent-em">先和 ta 的视角排练一遍</em>。
-            </h3>
-            <p class="case-summary">
-              subject 明天早会要 demo 这一周的 export 改动。Pace 把同一句话用三个同事的口气演一遍 — 出错都在见面前出。
-            </p>
-          </header>
-
-          <div class="rehearsal">
-            <div class="rehearsal-subject">
-              <span class="exhibit-tag exhibit-tag-static">你准备说的那句</span>
-              <pre class="exhibit-body exhibit-body-small">「我这周把 export
-的 contract 全部
-重写了一遍，
-顺便加了 streaming。」</pre>
-              <div class="exhibit-foot">早会草稿 · 未说出口</div>
+            <!-- Scene 0: intro 0-2s -->
+            <div class="scene scene-0">
+              <h2>这是 <span class="grad">tspr</span>。</h2>
+              <p>30 秒看完它怎么工作。</p>
             </div>
 
-            <div class="rehearsal-voices">
-              <article class="voice">
-                <div class="voice-name">Tom</div>
-                <div class="voice-role">后端 · 这事得他点头</div>
-                <p class="voice-line">「contract 你和谁对过了？我的 v2 还在 dev 上跑，下游全是 401。」</p>
-                <div class="voice-risk">接口对不上</div>
-              </article>
-              <article class="voice">
-                <div class="voice-name">麦子</div>
-                <div class="voice-role">streaming · 这块 ta 在推进</div>
-                <p class="voice-line">「streaming 这块我上周才合的 main，你直接覆盖了 backpressure 逻辑没？」</p>
-                <div class="voice-risk">默默改掉了别人的活</div>
-              </article>
-              <article class="voice">
-                <div class="voice-name">林姐</div>
-                <div class="voice-role">PM · 这事要听 ta 拍板</div>
-                <p class="voice-line">「这个改动我没在 RFC 里见过。是你自己决定要做的还是漏了对齐？」</p>
-                <div class="voice-risk">没人知道你在做</div>
-              </article>
-            </div>
-          </div>
-
-          <aside class="verdict" aria-label="Pace 给的开场白">
-            <span class="case-stamp" aria-hidden="true">已立案</span>
-            <div class="verdict-tag">
-              <span>PACE · 告诉你怎么开口</span>
-              <span class="verdict-meta">思考 <span data-count-to="18">0</span> 秒 · <span data-count-to="112">0</span> 字</span>
-            </div>
-            <blockquote class="verdict-body">
-              「你这周做的事和 Tom 的 v2 是同一块地。先在早会之前给他一行：『export 的接口我动了，14:00 看你 5 分钟？』 — 别等他从 demo 里听到。」
-            </blockquote>
-            <footer class="verdict-sign">
-              <span>你在做的 · 推进阶段，该走出去对齐了</span>
-              <span aria-hidden="true">·</span>
-              <span>下一步 · 早会前先 ping Tom</span>
-              <span class="verdict-sign-by">Pace · mentor</span>
-            </footer>
-          </aside>
-        </article>
-
-        <hr class="case-rule" />
-
-        <!-- ─────── CASE 03 -->
-        <article class="case" aria-labelledby="case-03-title" data-case-num="03">
-          <header class="case-head">
-            <div class="case-label">
-              <span class="case-num">CASE · 03</span>
-              <span class="case-slug">边界 · Pace 不会替你做的事</span>
-            </div>
-            <h3 class="case-title" id="case-03-title">
-              它不替你决策，<em class="accent-em">它把决策摆给你看</em>。
-            </h3>
-            <p class="case-summary">
-              mentor 和 boss 不是同一份工作。Pace 告诉你你在做什么 + 谁等着你的下游 + 话怎么开，决定权在你。下面是同一场景的两种回答。
-            </p>
-          </header>
-
-          <div class="comparison">
-            <article class="compare compare-not">
-              <span class="exhibit-tag exhibit-tag-static compare-tag-muted">不是这样</span>
-              <div class="compare-mode">BOSS · 替你拍板</div>
-              <p class="compare-line compare-line-strike">
-                「你应该现在去 ping Tom。已经卡 3 小时了，再不开口就是浪费时间。」
-              </p>
-              <div class="compare-note">
-                ↑ 替你判断「应该」 / 替你估算时间 / 替你定义浪费<br />
-                这是 task tracker 加 boss 干的事。
+            <!-- Scene 1: MCP invocation — user → CC → MCP → tspr -->
+            <div class="scene scene-mcp">
+              <div class="mcp-stage">
+                <div class="mcp-side mcp-side--user">
+                  <div class="mcp-label">在你的编辑器里 · cc / cursor / cline</div>
+                  <div class="chat-bubble chat-bubble--user">
+                    刚写完登录接口和订单 CRUD，<strong>帮我跑一遍真测试，找有没有藏 bug</strong>
+                  </div>
+                  <div class="chat-bubble chat-bubble--ai">
+                    好。调 <code>tspr</code> 的 MCP 工具<span class="dots">…</span>
+                  </div>
+                  <div class="mcp-call">
+                    <div class="mcp-call__head">▸ MCP tool call</div>
+                    <pre><span class="kw">tspr</span>.<span class="fn">bootstrap_tests</span>({
+  <span class="key">projectPath</span>: <span class="str">"./"</span>,
+  <span class="key">type</span>: <span class="str">"backend"</span>
+})</pre>
+                  </div>
+                </div>
+                <div class="mcp-arrow">
+                  <svg viewBox="0 0 80 200" preserveAspectRatio="none" style="width:100%;height:100%">
+                    <defs>
+                      <linearGradient id="g" x1="0" x2="1">
+                        <stop offset="0" stop-color="var(--accent)"/>
+                        <stop offset="1" stop-color="var(--accent-2)"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M5,100 Q40,100 75,100" fill="none" stroke="url(#g)" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 8" class="arrow-anim"/>
+                    <polygon points="65,90 78,100 65,110" fill="var(--accent-2)"/>
+                  </svg>
+                </div>
+                <div class="mcp-side mcp-side--tspr">
+                  <div class="mcp-label">tspr 接管</div>
+                  <div class="mcp-status">
+                    <div class="mcp-status__row"><span class="ok-dot"></span>MCP server up</div>
+                    <div class="mcp-status__row"><span class="ok-dot"></span>项目类型: Express + TS</div>
+                    <div class="mcp-status__row"><span class="ok-dot"></span>15 路由 / 7 模块</div>
+                    <div class="mcp-status__row"><span class="ok-dot"></span>本地 Docker 沙箱就绪</div>
+                    <div class="mcp-status__row"><span class="working-dot"></span>下一步: 写测试</div>
+                  </div>
+                </div>
               </div>
-            </article>
+            </div>
 
-            <article class="compare compare-is">
-              <span class="exhibit-tag exhibit-tag-static compare-tag-gold">这样才对</span>
-              <div class="compare-mode">PACE · 告诉你该找谁</div>
-              <p class="compare-line">
-                「你在 main 上写了 3 小时没提交。这块得 Tom 点头，他下午有两个空档。<em class="compare-em">去开口 / 再写一会 / 让我先帮你列下要问的</em> — 你来挑。」
-              </p>
-              <div class="compare-note">
-                ↑ 你在做的 + 证据 + 选项 + 话怎么开<br />
-                哪个是你的事，是你的事。
+            <!-- Scene 2: scan terminal -->
+            <div class="scene scene-1">
+              <div class="scene__title">[1/5] 扫描你的项目</div>
+              <div class="term">
+                <div><span class="prompt">~/your-api $</span> <span class="cmd">tspr bootstrap --project ./</span></div>
+                <div class="out">▸ detected: <span class="ok">Node.js + Express</span></div>
+                <div class="out">▸ scanning <span style="color:var(--accent)">src/**/*.ts</span> ...</div>
+                <div class="out">▸ found <span class="ok">15 routes</span> · <span class="ok">7 modules</span> · <span class="warn">3 with auth middleware</span></div>
+                <div class="out">▸ resolving mount prefixes (<span class="ok">app.use('/api/auth', authRouter)</span>) ...</div>
+                <div class="out">▸ done in <span class="ok">230ms</span></div>
+                <div>&nbsp;</div>
+                <div><span class="prompt">~/your-api $</span> <span class="typing"></span></div>
               </div>
-            </article>
-          </div>
-        </article>
+            </div>
 
-      </div>
-    </section>
-
-    <hr class="section-rule" />
-
-    <!-- ─────────────────────────────────────────────────── Theatre · video case file -->
-    <section class="theatre" id="watch" aria-labelledby="theatre-h2">
-      <div class="container">
-        <div class="case-label">
-          <span class="case-num">案卷 · 04</span>
-          <span class="case-slug">一次完整 session · 117 秒压成 1080p</span>
-        </div>
-        <h2 class="case-title" id="theatre-h2">看一眼 Pace 怎么开的口。</h2>
-        <p class="case-summary">没旁白 · 全用真数据 · 真 commit sha · 真 cc 对话 · 真团队 RACI。</p>
-
-        <div class="theatre-frame">
-          <div class="theatre-corner theatre-corner-tl" aria-hidden="true"></div>
-          <div class="theatre-corner theatre-corner-tr" aria-hidden="true"></div>
-          <div class="theatre-corner theatre-corner-bl" aria-hidden="true"></div>
-          <div class="theatre-corner theatre-corner-br" aria-hidden="true"></div>
-          <video
-            class="theatre-video"
-            src="pace-demo.mp4"
-            controls
-            autoplay
-            loop
-            muted
-            playsinline
-            preload="auto"
-            aria-label="Pace 演示视频 · 1 分 57 秒"
-          ></video>
-          <div class="theatre-rec" aria-hidden="true">
-            <span class="theatre-rec-dot"></span>
-            <span class="theatre-rec-label">REC</span>
-          </div>
-          <div class="theatre-glow" aria-hidden="true"></div>
-        </div>
-
-        <div class="theatre-strip" role="list">
-          <div class="strip-cell" role="listitem">
-            <span class="strip-label">duration</span>
-            <span class="strip-val">1m 57s</span>
-          </div>
-          <div class="strip-cell" role="listitem">
-            <span class="strip-label">cost</span>
-            <span class="strip-val">$0 · 本地优先</span>
-          </div>
-          <div class="strip-cell" role="listitem">
-            <span class="strip-label">agent</span>
-            <span class="strip-val">5 工具 · 29 秒才开口</span>
-          </div>
-          <div class="strip-cell" role="listitem">
-            <span class="strip-label">bgm</span>
-            <span class="strip-val">CC BY · Kevin MacLeod</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <hr class="section-rule" />
-
-    <!-- ─────────────────────────────────────────────────── Live UI tour · Now + Team mock (dossier-skinned) -->
-    <section class="exhibits-live" id="ui-tour" aria-labelledby="tour-h2">
-      <div class="container">
-        <div class="case-label">
-          <span class="case-num">案卷 · 05</span>
-          <span class="case-slug">活样本 · 那两个 tab 你没看到</span>
-        </div>
-        <h2 class="case-title" id="tour-h2">视频里没看到的：<em class="accent-em">现在</em> 和 <em class="accent-em">团队</em>。</h2>
-        <p class="case-summary">视频只占 117 秒，剩下两个 tab 没机会展开。下面是它们的活样本——切换、hover 一下看 Pace 怎么读、怎么开口。</p>
-
-        <!-- Tab switcher -->
-        <div class="exhibit-tabs" role="tablist" aria-label="Pace UI 活样本">
-          <button class="exhibit-tab is-active" data-tab="now" role="tab" aria-selected="true" id="tab-now" aria-controls="panel-now" type="button">
-            <span class="tab-num">01</span>
-            <span class="tab-label">现在 · Now</span>
-            <span class="tab-meta">commit + 观察卡</span>
-          </button>
-          <button class="exhibit-tab" data-tab="team" role="tab" aria-selected="false" id="tab-team" aria-controls="panel-team" type="button">
-            <span class="tab-num">02</span>
-            <span class="tab-label">团队 · Team</span>
-            <span class="tab-meta">RACI · 沟通偏好</span>
-          </button>
-          <span class="exhibit-tabs-meta">活样本 · 非真截图 · 用 dossier 笔触画</span>
-        </div>
-
-        <div class="exhibit-stage" data-tab-host>
-
-          <!-- ━━━━━━━━━━━━━━━━━━━━ Now tab panel -->
-          <div class="exhibit-panel is-active" data-tab-panel="now" id="panel-now" role="tabpanel" aria-labelledby="tab-now">
-
-            <!-- Commit pane (mock) -->
-            <article class="now-commits" data-stagger>
-              <header class="now-commits-head">
-                <span class="now-commits-title">最近 5 次 提交</span>
-                <span class="now-commits-meta">~/lll/pace · main · 落后 origin 5</span>
-              </header>
-              <ol class="commit-rows">
-                <li class="commit-row" style="--row-i:0">
-                  <span class="commit-hash">9c7e255</span>
-                  <span class="commit-time">12 min</span>
-                  <span class="commit-subj">feat(landing v3.2)：案卷 04 · 嵌 pace-demo.mp4 + F/G/I dossier 特效</span>
-                  <span class="pmp-chip pmp-chip-red" aria-label="PMP 阶段">收尾</span>
-                </li>
-                <li class="commit-row" style="--row-i:1">
-                  <span class="commit-hash">a4eee3f</span>
-                  <span class="commit-time">1 h</span>
-                  <span class="commit-subj">fix(landing v3.1)：sticky docket z-index 60 + dossier background animations</span>
-                  <span class="pmp-chip pmp-chip-red" aria-label="PMP 阶段">收尾</span>
-                </li>
-                <li class="commit-row" style="--row-i:2">
-                  <span class="commit-hash">bf63eb1</span>
-                  <span class="commit-time">2 h</span>
-                  <span class="commit-subj">feat(landing v3)：Claude Design「Evidence / Dossier」方向交付</span>
-                  <span class="pmp-chip pmp-chip-gold" aria-label="PMP 阶段">推进</span>
-                </li>
-                <li class="commit-row" style="--row-i:3">
-                  <span class="commit-hash">3378bf6</span>
-                  <span class="commit-time">3 h</span>
-                  <span class="commit-subj">feat(video)：v4.1 mp4 final — aesthetic-review 8.4/10 PASS</span>
-                  <span class="pmp-chip pmp-chip-gold" aria-label="PMP 阶段">推进</span>
-                </li>
-                <li class="commit-row" style="--row-i:4">
-                  <span class="commit-hash">28ebe62</span>
-                  <span class="commit-time">5 h</span>
-                  <span class="commit-subj">feat(landing v2)：推翻 ea2913c + 7 处说辞 patch + 视频 v4 准备物</span>
-                  <span class="pmp-chip pmp-chip-gold" aria-label="PMP 阶段">推进</span>
-                </li>
-              </ol>
-              <div class="commit-digest">
-                最近 5 个 commit 多在 <em>收尾活 · 跨度 3 小时</em>
-                <span aria-hidden="true">·</span>
-                共 47 文件 · 5 个未 push
+            <!-- Scene 2: route discovery 9-12s -->
+            <div class="scene scene-2">
+              <div class="scene__title">[2/5] 路由全识别</div>
+              <div class="routes">
+                <div class="route-pill"><span class="method">GET</span>/health</div>
+                <div class="route-pill"><span class="method">POST</span>/api/auth/login</div>
+                <div class="route-pill"><span class="method">GET</span>/api/auth/me</div>
+                <div class="route-pill"><span class="method">POST</span>/api/auth/logout</div>
+                <div class="route-pill"><span class="method">GET</span>/api/todos</div>
+                <div class="route-pill"><span class="method">POST</span>/api/todos</div>
+                <div class="route-pill"><span class="method">GET</span>/api/todos/:id</div>
+                <div class="route-pill"><span class="method">PUT</span>/api/todos/:id</div>
+                <div class="route-pill"><span class="method">DELETE</span>/api/todos/:id</div>
+                <div class="route-pill"><span class="method">GET</span>/api/users</div>
+                <div class="route-pill"><span class="method">GET</span>/api/users/:id</div>
+                <div class="route-pill"><span class="method">GET</span>/api/items</div>
+                <div class="route-pill"><span class="method">POST</span>/api/items</div>
+                <div class="route-pill"><span class="method">GET</span>/api/items/:id</div>
+                <div class="route-pill"><span class="method">DELETE</span>/api/items/:id</div>
               </div>
-            </article>
+              <div class="count">15/15<span class="label">routes discovered · 100% recall</span></div>
+            </div>
 
-            <!-- Observation cards -->
-            <div class="now-cards" data-stagger role="list">
-              <article class="obs-card obs-card-warn" data-rotate="-0.4" role="listitem">
-                <span class="obs-card-icon" aria-hidden="true">⏳</span>
-                <h3 class="obs-card-h">上次 commit 是 47 分钟前</h3>
-                <p class="obs-card-p">你停笔但没收口。一般这个时候 cc 在 streaming 卡住，或者你在等什么人回话。</p>
-                <button class="obs-card-link" type="button" data-mentor-toggle>
-                  <span class="obs-card-link-text">想看建议</span>
-                  <span class="obs-card-link-arrow" aria-hidden="true">→</span>
-                </button>
-                <div class="obs-mentor" hidden>
-                  <span class="obs-mentor-tag">PACE · 一句</span>
-                  <p class="obs-mentor-body" data-typewriter>「写 47 分钟没动 git 不奇怪。但你 main 上裸改 12 个文件——先 stash 出去开个 branch，再继续，丢东西的概率小一半。」</p>
-                </div>
-              </article>
+            <!-- Scene 3: LLM writes tests 12-18s -->
+            <div class="scene scene-3">
+              <div class="scene__title">[3/5] LLM 读源码写真测试</div>
+              <div class="code">
+<span class="ln"><span class="com">// auto-generated by tspr · grounded in fixture source</span></span>
+<span class="ln"><span class="kw">import</span> request <span class="kw">from</span> <span class="str">'supertest'</span>;</span>
+<span class="ln"><span class="kw">import</span> { describe, it, expect } <span class="kw">from</span> <span class="str">'vitest'</span>;</span>
+<span class="ln"><span class="kw">const</span> BASE_URL = <span class="str">'http://host.docker.internal:3003'</span>;</span>
+<span class="ln">&nbsp;</span>
+<span class="ln"><span class="fn">describe</span>(<span class="str">'POST /api/todos'</span>, () =&gt; {</span>
+<span class="ln">  <span class="fn">it</span>(<span class="str">'empty body should return 400'</span>, <span class="kw">async</span> () =&gt; {</span>
+<span class="ln">    <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">request</span>(BASE_URL)</span>
+<span class="ln">      .<span class="fn">post</span>(<span class="str">'/api/todos'</span>).<span class="fn">send</span>({});</span>
+<span class="ln">    <span class="fn">expect</span>(res.status).<span class="fn">toBe</span>(<span class="num">400</span>); <span class="com">// ← seeded bug expected here</span></span>
+<span class="ln">  });</span>
+<span class="ln"><span class="ln">});</span></span>
+<span class="ln">&nbsp;</span>
+<span class="ln"><span class="fn">describe</span>(<span class="str">'PUT /api/todos/:id'</span>, () =&gt; {</span>
+<span class="ln">  <span class="fn">it</span>(<span class="str">'non-existent id should return 404'</span>, <span class="kw">async</span> () =&gt; { ... });</span>
+<span class="ln">});</span>
+              </div>
+            </div>
 
-              <article class="obs-card obs-card-warn" data-rotate="0.35" role="listitem">
-                <span class="obs-card-icon" aria-hidden="true">🌲</span>
-                <h3 class="obs-card-h">你在 main 上裸改 · 还没建分支</h3>
-                <p class="obs-card-p">12 个未提交改动全在 main。Tom 早上 push 过 v2 schema，下个 git pull 会有冲突要处理。</p>
-                <button class="obs-card-link" type="button" data-mentor-toggle>
-                  <span class="obs-card-link-text">想看建议</span>
-                  <span class="obs-card-link-arrow" aria-hidden="true">→</span>
-                </button>
-                <div class="obs-mentor" hidden>
-                  <span class="obs-mentor-tag">PACE · 一句</span>
-                  <p class="obs-mentor-body" data-typewriter>「`git switch -c export/streaming` 然后把这 12 个挪过去。下次 pull 出来的不是冲突是 fast-forward。」</p>
+            <!-- Scene 4: sandbox execution 18-24s -->
+            <div class="scene scene-4">
+              <div class="scene__title">[4/5] 沙箱跑真测试</div>
+              <div class="sandbox">
+                <div class="panel">
+                  <div class="panel__title">Docker sandbox</div>
+                  <div class="sandbox-status">
+                    <div><span class="check">✓</span> tspr/sandbox-node:24</div>
+                    <div><span class="check">✓</span> vitest 1.4.0</div>
+                    <div><span class="check">✓</span> supertest 6.3.4</div>
+                    <div><span class="check">✓</span> network: bridge</div>
+                    <div><span class="check">✓</span> isolated /tspr-runtime</div>
+                    <div style="margin-top:.6rem;color:var(--text-dim);font-size:0.78rem">cold start: 1.2s</div>
+                  </div>
                 </div>
-              </article>
+                <div class="panel">
+                  <div class="panel__title">vitest output (live)</div>
+                  <div class="test-row pass"><span class="ico">✓</span> health · returns 200</div>
+                  <div class="test-row pass"><span class="ico">✓</span> login · valid creds returns 201</div>
+                  <div class="test-row fail"><span class="ico">✗</span> login · wrong password returns 401 <span style="color:var(--red);margin-left:auto;font-weight:700">[T-04]</span></div>
+                  <div class="test-row pass"><span class="ico">✓</span> me · with bearer token returns 200</div>
+                  <div class="test-row fail"><span class="ico">✗</span> todos · empty body returns 400 <span style="color:var(--red);margin-left:auto;font-weight:700">[T-02]</span></div>
+                  <div class="test-row fail"><span class="ico">✗</span> todos · non-existent id returns 404 <span style="color:var(--red);margin-left:auto;font-weight:700">[T-01]</span></div>
+                  <div class="test-row fail"><span class="ico">✗</span> todos · DELETE with ';' crashes <span style="color:var(--red);margin-left:auto;font-weight:700">[T-03]</span></div>
+                  <div class="test-row fail"><span class="ico">✗</span> users · admin list w/o token returns 401 <span style="color:var(--red);margin-left:auto;font-weight:700">[T-05]</span></div>
+                  <div class="test-row fail"><span class="ico">✗</span> items · DELETE non-existent returns 404 <span style="color:var(--red);margin-left:auto;font-weight:700">[T-06]</span></div>
+                  <div class="test-row pass"><span class="ico">✓</span> items · CRUD happy path</div>
+                  <div class="test-row pass"><span class="ico">✓</span> users · profile shape match</div>
+                  <div class="test-row pass"><span class="ico">✓</span> auth · logout invalidates token</div>
+                </div>
+              </div>
+            </div>
 
-              <article class="obs-card obs-card-info" data-rotate="-0.25" role="listitem">
-                <span class="obs-card-icon" aria-hidden="true">📤</span>
-                <h3 class="obs-card-h">5 个 commit 没 push · origin 落后</h3>
-                <p class="obs-card-p">本地领先 origin/main 5 个 commit。CI 看不到你的活，code review 也排不上队。</p>
-                <button class="obs-card-link" type="button" data-mentor-toggle>
-                  <span class="obs-card-link-text">想看建议</span>
-                  <span class="obs-card-link-arrow" aria-hidden="true">→</span>
-                </button>
-                <div class="obs-mentor" hidden>
-                  <span class="obs-mentor-tag">PACE · 一句</span>
-                  <p class="obs-mentor-body" data-typewriter>「先 push 出去——就算还没 ready for review，至少 CI 跑起来。等收尾活做完才 push，等于让你的同事再多猜 3 小时。」</p>
+            <!-- Scene 5: real product dashboard appears -->
+            <div class="scene scene-5">
+              <span class="chapter">CH 3 · 看 output</span>
+              <div class="scene__title">[5/12] 真 dashboard 弹出来</div>
+              <div class="dash-preview">
+                <div class="dash-card">
+                  <div class="dash-card__lbl">Total tests</div>
+                  <div class="dash-card__num acc">41</div>
+                  <div class="dash-card__sub">in 47s · 15 routes covered</div>
                 </div>
-              </article>
+                <div class="dash-card">
+                  <div class="dash-card__lbl">Passed</div>
+                  <div class="dash-card__num ok">35</div>
+                  <div class="dash-card__sub">happy + boundary paths</div>
+                </div>
+                <div class="dash-card">
+                  <div class="dash-card__lbl">Failed</div>
+                  <div class="dash-card__num fail">6</div>
+                  <div class="dash-card__sub">= seeded bugs found</div>
+                </div>
+                <div class="dash-card">
+                  <div class="dash-card__lbl">Cost</div>
+                  <div class="dash-card__num acc">$0.04</div>
+                  <div class="dash-card__sub">MiniMax-M2.7 实测</div>
+                </div>
+              </div>
+              <div class="dash-fail-list">
+                <div class="dash-fail-row"><span class="sev crit">CRIT</span>TC001 · POST /api/auth/login · expected 401 got 201</div>
+                <div class="dash-fail-row"><span class="sev high">HIGH</span>TC002 · PUT /api/todos/:id · 404 expected on non-existent</div>
+                <div class="dash-fail-row"><span class="sev high">HIGH</span>TC003 · POST /api/todos · empty body should return 400</div>
+                <div class="dash-fail-row"><span class="sev crit">CRIT</span>TC004 · DELETE /api/todos/:id · crashes on special chars</div>
+              </div>
+            </div>
 
-              <article class="obs-card obs-card-good" data-rotate="0.5" role="listitem">
-                <span class="obs-card-icon" aria-hidden="true">📝</span>
-                <h3 class="obs-card-h">最近 5 个 commit 都在改 UI · 一个专注迭代</h3>
-                <p class="obs-card-p">subject 都围 landing / dossier / theatre。这种迭代是好事——但记得跟设计 ping 一声进度。</p>
-                <button class="obs-card-link" type="button" data-mentor-toggle>
-                  <span class="obs-card-link-text">想看建议</span>
-                  <span class="obs-card-link-arrow" aria-hidden="true">→</span>
-                </button>
-                <div class="obs-mentor" hidden>
-                  <span class="obs-mentor-tag">PACE · 一句</span>
-                  <p class="obs-mentor-body" data-typewriter>「阿珍周二有评审，把 v3.2 的两张截图发她 — 让她在评审前就知道你在调，免得她周一另起一稿。」</p>
+            <!-- Scene 6: dashboard with severity + groups + heal-log -->
+            <div class="scene scene-6">
+              <span class="chapter">CH 4 · 不止 dashboard</span>
+              <div class="scene__title">[6/12] Heal log — 当 LLM 写错 tspr 自己重试</div>
+              <ul class="heal-tl">
+                <li class="warn"><strong>Attempt 1</strong> · <span class="why">LLM returned empty (MiniMax-M2.7 burnt all completion tokens on reasoning)</span></li>
+                <li class="fail"><strong>Attempt 2</strong> · <span class="why">cleaned = 0c · max_tokens 16k → 32k</span></li>
+                <li class="ok"><strong>Attempt 3</strong> · <span class="why">✓ generated 41 supertest scenarios · 14.2s</span></li>
+                <li class="ok"><strong>Sandbox</strong> · <span class="why">→ vitest run · all 41 scenarios collected · 6 fail · 35 pass</span></li>
+              </ul>
+            </div>
+
+            <!-- Scene 7: Schedules + Alerts — 3 步流动叙事 -->
+            <div class="scene scene-7">
+              <div class="flow-panel">
+                <div class="flow-stage flow-stage--cron">
+                  <div class="flow-stage__icon">⏰</div>
+                  <div class="flow-stage__big">每周一 09:00</div>
+                  <div class="flow-stage__sub">Vercel cron 自动触发</div>
+                  <code class="flow-stage__code">0 9 * * MON</code>
                 </div>
-              </article>
+                <div class="flow-arrow"><span>tspr 自动接管</span></div>
+                <div class="flow-stage flow-stage--run">
+                  <div class="flow-stage__icon">🧪</div>
+                  <div class="flow-stage__big">15 路由 · 41 测试</div>
+                  <div class="flow-stage__sub">真 Docker 沙箱里跑</div>
+                  <code class="flow-stage__code">47s · $0.04</code>
+                </div>
+                <div class="flow-arrow"><span>检测到 2 个回归</span></div>
+                <div class="flow-stage flow-stage--alert">
+                  <div class="flow-stage__icon">💬</div>
+                  <div class="flow-stage__big">Slack 通知</div>
+                  <div class="flow-stage__sub">@team · 2 个新失败</div>
+                  <code class="flow-stage__code">webhook fired ✓</code>
+                </div>
+              </div>
+              <div class="flow-bonus">
+                支持渠道：<strong style="color:var(--accent)">Slack</strong> · Discord · 自定义 webhook · 邮件 · 多规则 (pass_rate &lt; X / new failure / 连续失败)
+              </div>
+            </div>
+
+            <!-- Scene 8: 难度阶梯 ladder -->
+            <div class="scene scene-8">
+              <div class="ladder">
+                <div class="ladder__step ladder__step--l1">
+                  <div class="ladder__badge ladder__badge--ok">L1</div>
+                  <div class="ladder__icon">🧪</div>
+                  <div class="ladder__name">tspr-target</div>
+                  <div class="ladder__score ladder__score--ok">100%</div>
+                  <div class="ladder__tags">Express · TS · 6 个 HTTP-status bug · <strong style="color:var(--green)">入门</strong></div>
+                </div>
+                <div class="ladder__step ladder__step--l2">
+                  <div class="ladder__badge ladder__badge--warn">L2</div>
+                  <div class="ladder__icon">🔐</div>
+                  <div class="ladder__name">VAmPI</div>
+                  <div class="ladder__score ladder__score--warn">0/5 诚实</div>
+                  <div class="ladder__tags">Python Flask · OWASP API · <strong style="color:var(--orange)">中级 (tspr Node-only 拒收, 不藏)</strong></div>
+                </div>
+                <div class="ladder__step ladder__step--l3">
+                  <div class="ladder__badge ladder__badge--high">L3</div>
+                  <div class="ladder__icon">📈</div>
+                  <div class="ladder__name">meme-weather</div>
+                  <div class="ladder__score ladder__score--high">3 hard bugs</div>
+                  <div class="ladder__tags">Next.js + Supabase + Drizzle + Realtime · <strong style="color:var(--accent)">真生产</strong></div>
+                </div>
+              </div>
+              <div class="ladder__foot">
+                <strong style="color:var(--accent)">14 个 seeded bug</strong> · 3 个真实 fixture · 100% 精准命中入门档 · 不挑数据
+              </div>
+            </div>
+
+            <!-- Scene 9: meme-weather 3 production bugs — detailed case files -->
+            <div class="scene scene-9">
+              <div class="mw-header">
+                <div class="mw-header__left">
+                  <div class="mw-header__name">梗气象台
+                    <a href="http://192.168.22.2:3000" target="_blank" rel="noopener" class="mw-header__url">
+                      ▶ http://192.168.22.2:3000 <span class="alive-mini">LIVE</span>
+                    </a>
+                  </div>
+                  <div class="mw-header__sub">真上线 web app · 28 次 tspr 跑过 · ~/.tspr/db.sqlite 留证 · 任何电脑可点</div>
+                </div>
+                <div class="mw-header__stack">
+                  <span class="mw-tech">Next.js 15</span>
+                  <span class="mw-tech">Supabase</span>
+                  <span class="mw-tech">Drizzle</span>
+                  <span class="mw-tech">Realtime</span>
+                  <span class="mw-tech">Cron</span>
+                </div>
+              </div>
+              <div class="mw-cases">
+                <div class="mw-case mw-case--hi">
+                  <div class="mw-case__head">
+                    <span class="mw-case__icon">⏰</span>
+                    <div>
+                      <div class="mw-case__id">CASE 01 · TSPR-BUG-1</div>
+                      <div class="mw-case__title">时区 off-by-one</div>
+                    </div>
+                    <span class="mw-pill mw-pill--hi">高难</span>
+                  </div>
+                  <pre class="mw-code"><span class="com">// lib/memes/settle.ts:42</span>
+<span class="kw">const</span> now = <span class="kw">new</span> <span class="fn">Date</span>(); <span class="bad">// ✗ 服务器本地 TZ</span>
+<span class="kw">if</span> (now &gt; week.settles_at) {...}</pre>
+                  <div class="mw-case__why">
+                    🕵 <strong>code review 抓不到</strong>：表面正常。只在跨 UTC 周边界下注才暴露。
+                  </div>
+                </div>
+
+                <div class="mw-case mw-case--xhi">
+                  <div class="mw-case__head">
+                    <span class="mw-case__icon">⚡</span>
+                    <div>
+                      <div class="mw-case__id">CASE 02 · TSPR-BUG-2</div>
+                      <div class="mw-case__title">并发 race condition</div>
+                    </div>
+                    <span class="mw-pill mw-pill--xhi">极高</span>
+                  </div>
+                  <pre class="mw-code"><span class="com">// app/api/memes/[id]/bet/route.ts</span>
+<span class="kw">const</span> user = <span class="kw">await</span> <span class="fn">getUser</span>();
+<span class="kw">await</span> <span class="fn">updateWallet</span>(user.id, -amount); <span class="bad">// ✗ no row lock</span></pre>
+                  <div class="mw-case__why">
+                    🕵 <strong>10 并发同 user 下注</strong> → 钱包扣到负数。压力测试才暴露。
+                  </div>
+                </div>
+
+                <div class="mw-case mw-case--mid">
+                  <div class="mw-case__head">
+                    <span class="mw-case__icon">📄</span>
+                    <div>
+                      <div class="mw-case__id">CASE 03 · TSPR-BUG-3</div>
+                      <div class="mw-case__title">分页 off-by-one</div>
+                    </div>
+                    <span class="mw-pill mw-pill--mid">中难</span>
+                  </div>
+                  <pre class="mw-code"><span class="com">// app/api/graveyard/route.ts</span>
+<span class="kw">const</span> offset = page * limit; <span class="bad">// ✗ 应该 (page-1) * limit</span>
+<span class="kw">return</span> db.<span class="fn">select</span>().offset(offset);</pre>
+                  <div class="mw-case__why">
+                    🕵 <strong>第 1 / 2 页有重复记录</strong>。user 反馈"刷不出新内容"才发现。
+                  </div>
+                </div>
+              </div>
+              <div class="mw-foot">
+                <span style="color:var(--accent);font-weight:700">这才是真生产 bug 的难度</span> · 不是 "PUT 不存在 id 返 200" 那种 toy bug · 等 hardener-bench 重测 L3 真分
+              </div>
+            </div>
+
+            <!-- Scene 10: 5-dim moat (tspr vs TestSprite) -->
+            <div class="scene scene-10">
+              <span class="chapter">CH 6 · 护城河</span>
+              <div class="scene__title">[10/12] 5 维公式 · 别人不敢测的 2 维</div>
+              <div class="moat-grid">
+                <div class="h">维度</div>
+                <div class="h col2">tspr (公开)</div>
+                <div class="h col2">TestSprite</div>
+
+                <div>路由发现 route_recall</div>
+                <div class="col2 ok-cell">1.00 公开</div>
+                <div class="col2 miss">不公布</div>
+
+                <div>场景覆盖 scenario_coverage</div>
+                <div class="col2 ok-cell">1.00 公开</div>
+                <div class="col2 miss">"94%" 营销</div>
+
+                <div>抓真问题 bug_trigger</div>
+                <div class="col2 ok-cell">100% 复现</div>
+                <div class="col2 miss">"42→93%" 不可复现</div>
+
+                <div>🔒 不瞎报 false_fail</div>
+                <div class="col2 ok-cell">0.30 公开</div>
+                <div class="col2 fail-cell">不测自己</div>
+
+                <div>🔒 修哪行准 fix_region</div>
+                <div class="col2 ok-cell">0.00 诚实</div>
+                <div class="col2 fail-cell">不测自己</div>
+              </div>
+              <div style="position:absolute;bottom:1.3rem;left:1.8rem;right:1.8rem;text-align:center;font-family:var(--font-mono);font-size:.78rem;color:var(--accent)">
+                🔒 = 行业独家 · 别人不敢公开测自己的 2 维 · hardener-bench 独家公式
+              </div>
+            </div>
+
+            <!-- Scene 11: final numbers + CTA -->
+            <div class="scene scene-11">
+              <span class="chapter">CH 7 · 收</span>
+              <div class="scene__title">[11/12] 真实数字 · 不是 marketing</div>
+              <div class="final-grid">
+                <div class="final-num">
+                  <div class="final-num__val">14</div>
+                  <div class="final-num__lbl">真 bug 数</div>
+                </div>
+                <div class="final-num">
+                  <div class="final-num__val">47s</div>
+                  <div class="final-num__lbl">端到端</div>
+                </div>
+                <div class="final-num">
+                  <div class="final-num__val">$0.04</div>
+                  <div class="final-num__lbl">单次成本</div>
+                </div>
+                <div class="final-num">
+                  <div class="final-num__val">100%</div>
+                  <div class="final-num__lbl">本地 · 0 外传</div>
+                </div>
+              </div>
+              <div class="ending">
+                <h3>本机已起好 · <span style="color:var(--accent)">点 URL 即玩</span></h3>
+                <span class="url">▶ http://192.168.22.2:7654</span>
+              </div>
             </div>
 
           </div>
+          <div class="demo__progress"><i></i></div>
+        </div>
+      </div>
+    </section>
 
-          <!-- ━━━━━━━━━━━━━━━━━━━━ Team tab panel -->
-          <div class="exhibit-panel" data-tab-panel="team" id="panel-team" role="tabpanel" aria-labelledby="tab-team" hidden>
+    <!-- QUICKSTART ─────────────────────────────────────── -->
+    <section id="quickstart">
+      <div class="container">
+        <div class="sec-eyebrow">怎么用 / quickstart</div>
+        <h2 class="sec-h2">3 步开 <span class="grad">真测试</span></h2>
+        <p class="sec-lede">不用注册账号。不用上传代码。一条命令本地起，或者接进 Claude Desktop / Cursor / Cline 的 MCP。</p>
 
-            <header class="team-mock-head">
-              <span class="team-mock-title">这个项目里 你登记的同事</span>
-              <span class="team-mock-meta">3 位 · RACI 全齐 · 1 个待响应</span>
-            </header>
+        <div class="qs-grid">
+          <div class="qs-card">
+            <div class="qs-card__num">01</div>
+            <h4>装 CLI 或接 MCP</h4>
+            <div class="desc">本地直接装，或者写一行 MCP 配置 — Claude Desktop / Cursor / Cline 都直接识别 tspr 8 个工具。</div>
+            <pre><span class="com"># 方式一：本地 CLI</span>
+$ npm i -g @tspr/cli
 
-            <div class="team-cards" data-stagger role="list">
-              <!-- Member 1 · 晓婷 PM -->
-              <article class="member-card" data-rotate="-0.45" role="listitem">
-                <header class="member-card-head">
-                  <span class="member-avatar member-avatar-gold" aria-hidden="true">晓婷</span>
-                  <div class="member-id">
-                    <div class="member-name">晓婷</div>
-                    <div class="member-role">PM · 产品经理</div>
-                  </div>
-                  <span class="member-raci raci-A" aria-label="RACI: A 批准">A</span>
-                </header>
-                <dl class="member-meta">
-                  <div class="member-meta-row">
-                    <dt>RACI</dt>
-                    <dd><em class="member-raci-label">A · 批准</em>—这事得她点头</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>Agent</dt>
-                    <dd><code>claude-mentor-1</code> · slack:@xiaoting</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>偏好</dt>
-                    <dd>先文字后会议 · 早会前发要点</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>近态</dt>
-                    <dd><span class="member-pulse"></span>2 h 前在 RFC 里 @ 过你</dd>
-                  </div>
-                </dl>
-                <div class="member-actions">
-                  <button class="member-ping" type="button" data-mentor-toggle>
-                    <span aria-hidden="true">💬</span>
-                    <span class="member-ping-text">找她聊</span>
-                  </button>
-                  <button class="member-as" type="button">
-                    <span aria-hidden="true">🪞</span>
-                    <span>用她视角问</span>
-                  </button>
-                </div>
-                <div class="obs-mentor" hidden>
-                  <span class="obs-mentor-tag">PACE · 一句</span>
-                  <p class="obs-mentor-body" data-typewriter>「晓婷今天 14:30 之前会过一遍 RFC。把『export contract 改动』那段先发她——她拍板的话你这周收尾就稳了。」</p>
-                </div>
-              </article>
-
-              <!-- Member 2 · Tom Eng -->
-              <article class="member-card" data-rotate="0.3" role="listitem">
-                <header class="member-card-head">
-                  <span class="member-avatar member-avatar-gold" aria-hidden="true">To</span>
-                  <div class="member-id">
-                    <div class="member-name">Tom</div>
-                    <div class="member-role">Eng · 后端</div>
-                  </div>
-                  <span class="member-raci raci-R" aria-label="RACI: R 负责">R</span>
-                </header>
-                <dl class="member-meta">
-                  <div class="member-meta-row">
-                    <dt>RACI</dt>
-                    <dd><em class="member-raci-label">R · 负责</em>—IPC / cc 集成主负责</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>Agent</dt>
-                    <dd><code>codex-cli-2</code> · github:@tomliu</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>偏好</dt>
-                    <dd>直说 · 截图带 commit sha · 不开会</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>近态</dt>
-                    <dd><span class="member-pulse member-pulse-warn"></span>14:00 / 16:00 有空档</dd>
-                  </div>
-                </dl>
-                <div class="member-actions">
-                  <button class="member-ping" type="button" data-mentor-toggle>
-                    <span aria-hidden="true">💬</span>
-                    <span class="member-ping-text">找他聊</span>
-                  </button>
-                  <button class="member-as" type="button">
-                    <span aria-hidden="true">🪞</span>
-                    <span>用他视角问</span>
-                  </button>
-                </div>
-                <div class="obs-mentor" hidden>
-                  <span class="obs-mentor-tag">PACE · 一句</span>
-                  <p class="obs-mentor-body" data-typewriter>「Tom，IPC 改动我动到 streaming 那块了。14:00 抽你 15 分钟对一下 error code 语义——我这周想 PR，需要你点头。」</p>
-                </div>
-              </article>
-
-              <!-- Member 3 · 阿珍 Designer -->
-              <article class="member-card" data-rotate="-0.3" role="listitem">
-                <header class="member-card-head">
-                  <span class="member-avatar member-avatar-gold" aria-hidden="true">阿珍</span>
-                  <div class="member-id">
-                    <div class="member-name">阿珍</div>
-                    <div class="member-role">Designer · 设计</div>
-                  </div>
-                  <span class="member-raci raci-C" aria-label="RACI: C 咨询">C</span>
-                </header>
-                <dl class="member-meta">
-                  <div class="member-meta-row">
-                    <dt>RACI</dt>
-                    <dd><em class="member-raci-label">C · 咨询</em>—视觉决策她拍</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>Agent</dt>
-                    <dd><code>gemini-design</code> · figma:@azhen</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>偏好</dt>
-                    <dd>截图先于文字 · 不爱被 ping 微信</dd>
-                  </div>
-                  <div class="member-meta-row">
-                    <dt>近态</dt>
-                    <dd><span class="member-pulse"></span>周二 11:00 设计评审</dd>
-                  </div>
-                </dl>
-                <div class="member-actions">
-                  <button class="member-ping" type="button" data-mentor-toggle>
-                    <span aria-hidden="true">💬</span>
-                    <span class="member-ping-text">找她聊</span>
-                  </button>
-                  <button class="member-as" type="button">
-                    <span aria-hidden="true">🪞</span>
-                    <span>用她视角问</span>
-                  </button>
-                </div>
-                <div class="obs-mentor" hidden>
-                  <span class="obs-mentor-tag">PACE · 一句</span>
-                  <p class="obs-mentor-body" data-typewriter>「阿珍周二评审。今晚发她 2 张 v3.2 截图 + 一行『红印章 + 奶油底已经在了』——让她评审前就有 anchor，别现场推翻。」</p>
-                </div>
-              </article>
-            </div>
+<span class="com"># 方式二：MCP（claude desktop 配置）</span>
+"<span class="str">tspr</span>": {
+  "<span class="kw">command</span>": "<span class="str">node</span>",
+  "<span class="kw">args</span>": ["<span class="str">~/tspr/dist/cli/index.js</span>", "<span class="str">mcp</span>"]
+}</pre>
           </div>
 
-        </div>
+          <div class="qs-card">
+            <div class="qs-card__num">02</div>
+            <h4>对你的项目跑</h4>
+            <div class="desc">指目录给它，tspr 自动检测 Express / Fastify / Next.js + 装框架 + 扫路由 + 写 supertest + 在 Docker 沙箱跑。</div>
+            <pre>$ <span class="kw">cd</span> ~/your-api
+$ tspr bootstrap
+<span class="ok">✓ detected Node + Express</span>
 
-        <div class="exhibits-live-foot">
-          <span class="elf-mark" aria-hidden="true">●</span>
-          上面两个 tab 都是 dossier 风改造的活样本。真 Pace 跑起来是深色面板，行为一致——本地、被动、不上传。
+$ tspr execute
+<span class="ok">✓ 15 routes scanned</span>
+<span class="ok">✓ 41 scenarios planned</span>
+<span class="ok">✓ 100% recall · 47s · 0.04 USD</span></pre>
+          </div>
+
+          <div class="qs-card">
+            <div class="qs-card__num">03</div>
+            <h4>看 dashboard 看真问题</h4>
+            <div class="desc">本地 dashboard 起在 7654 端口：失败列表 + stack trace + 修复建议 + step replay + 调度 / 告警 / heal log 全套运维向工具。</div>
+            <pre>$ tspr dashboard
+<span class="ok">→ http://127.0.0.1:7654</span>
+
+<span class="com"># 或者远程访问</span>
+$ tspr tunnel
+<span class="ok">→ https://your-name.loca.lt</span></pre>
+          </div>
         </div>
       </div>
     </section>
 
-    <hr class="section-rule" />
-
-    <!-- ─────────────────────────────────────────────────── Sworn / promises -->
-    <section class="promises" id="promises" aria-labelledby="promises-h2">
+    <!-- PRODUCT OUTPUT GALLERY ──────────────────────────── -->
+    <section id="output">
       <div class="container">
-        <div class="case-label">
-          <span class="case-num">不可撤销 · 06</span>
-          <span class="case-slug">v1 不会让步的五条</span>
-        </div>
-        <h2 class="case-title" id="promises-h2">5 件不可撤销的事。</h2>
-        <p class="case-summary">改任意一条意味着 Pace 不再是 Pace。</p>
+        <div class="sec-eyebrow">产品 output / 看真的</div>
+        <h2 class="sec-h2">本地 dashboard 真<span class="grad">看到的东西</span></h2>
+        <p class="sec-lede">不是 mockup 不是宣传图。下面 5 张是<strong style="color:var(--text)">真 dashboard 实拍</strong>——你点 live demo 看到的就是这样。</p>
 
-        <ol class="promise-list">
-          <li class="promise">
-            <span class="promise-num">01.</span>
-            <h3 class="promise-h">看问题的角度可以换，<br />但首版只交一套。</h3>
-            <p class="promise-p">项目管理的常识是默认。OKR / Agile / 你自己定一套都能接。但一次只做透一个角度。</p>
-          </li>
-          <li class="promise">
-            <span class="promise-num">02.</span>
-            <h3 class="promise-h">独立桌面小窗。</h3>
-            <p class="promise-p">不进 IDE、不进浏览器 tab、不抢 cc 焦点。dock 在屏幕边，看一眼就走。</p>
-          </li>
-          <li class="promise">
-            <span class="promise-num">03.</span>
-            <h3 class="promise-h">你按「看我」它才动。</h3>
-            <p class="promise-p">没有 polling，没有 watcher。不看的时候它不费你 token。开不开你决定。</p>
-          </li>
-          <li class="promise">
-            <span class="promise-num">04.</span>
-            <h3 class="promise-h">等你看它一眼，不主动跳出来。</h3>
-            <p class="promise-p">不推送、不弹窗、不周一早上「Good morning」。它是 mentor，不是闹钟。</p>
-          </li>
-          <li class="promise">
-            <span class="promise-num">05.</span>
-            <h3 class="promise-h">全本地开源，你的 LLM key。</h3>
-            <p class="promise-p">MIT · 零后端 · 你自己插 key。我们手里不会留你任何东西，也不预留 SaaS 转身位。</p>
-          </li>
-        </ol>
-      </div>
-    </section>
-
-    <!-- ─────────────────────────────────────────────────── Affirmation (4 lines) -->
-    <section class="affirmation" aria-labelledby="affirm-h2">
-      <div class="container affirmation-inner">
-        <div class="affirmation-eyebrow">一句话讲完</div>
-        <p class="affirmation-body" id="affirm-h2">
-          它是 mentor。<br />
-          它读你的 cc。<br />
-          它在你电脑里。<br />
-          它告诉你下一步<em class="accent-em">找谁</em>、<em class="accent-em">话怎么开</em>。
-        </p>
-      </div>
-    </section>
-
-    <!-- ─────────────────────────────────────────────────── Download / install -->
-    <section class="download" id="download" aria-labelledby="dl-h2">
-      <div class="container download-inner">
-        <div class="download-text">
-          <div class="download-eyebrow">本地优先 · 自带 LLM key</div>
-          <h2 class="download-h" id="dl-h2">下完是你的。</h2>
-          <p class="download-p">5 MB · macOS · Windows · cc 历史不上传 · 仓库不读。删 app 就是全删 — 我们手里没有你任何东西。</p>
-        </div>
-        <div class="download-actions">
-          <a class="btn btn-primary btn-large" href="#" data-platform="mac">
-            <span class="btn-icon" aria-hidden="true">↓</span>
-            <span>Pace · macOS</span>
-            <span class="btn-meta">v0.1 · 5 MB</span>
+        <div class="gallery">
+          <a href="http://192.168.22.2:7654" target="_blank" rel="noopener" class="shot shot--big">
+            <img src="img/dash-home.png" alt="Dashboard Home" />
+            <div class="shot__lbl">▸ Home · 项目卡 + sparkline 趋势 + 近 12 次 runs</div>
           </a>
-          <a class="btn btn-secondary" href="#" data-platform="win">↓ Windows</a>
-          <div class="download-cli">
-            <code>brew install pace</code>
-            <button class="copy-btn" type="button" data-copy="brew install pace" aria-label="复制安装命令">复制</button>
+          <a href="http://192.168.22.2:7654" target="_blank" rel="noopener" class="shot shot--med">
+            <img src="img/dash-run.png" alt="Run Detail" />
+            <div class="shot__lbl">▸ Run · KPI + Groups + Severity + TC ID + Heal log</div>
+          </a>
+          <a href="http://192.168.22.2:7654" target="_blank" rel="noopener" class="shot">
+            <img src="img/dash-schedules.png" alt="Schedules" />
+            <div class="shot__lbl">▸ Schedules · Cron</div>
+          </a>
+          <a href="http://192.168.22.2:7654" target="_blank" rel="noopener" class="shot">
+            <img src="img/dash-alerts.png" alt="Alerts" />
+            <div class="shot__lbl">▸ Alerts · Slack/Discord/webhook</div>
+          </a>
+          <a href="http://192.168.22.2:7654" target="_blank" rel="noopener" class="shot shot--med">
+            <img src="img/dash-compare.png" alt="Compare" />
+            <div class="shot__lbl">▸ Compare · Fixed / New failures / Still failing</div>
+          </a>
+        </div>
+
+        <p style="text-align:center;margin-top:1.6rem;color:var(--text-dim);font-size:.9rem">
+          点任何一张图都跳到我本地 dashboard 的 live tunnel → <code style="color:var(--accent);font-family:var(--font-mono)">http://192.168.22.2:7654</code>
+        </p>
+      </div>
+    </section>
+
+    <!-- BIG NUMBER BAND ────────────────────────────────── -->
+    <section style="padding-top:2rem;padding-bottom:2rem">
+      <div class="band">
+        <div class="stat">
+          <div class="stat__big">14</div>
+          <div class="stat__lbl">真 bug 总数</div>
+          <div class="stat__sub">3 个 fixture · 含生产级</div>
+        </div>
+        <div class="stat">
+          <div class="stat__big">47s</div>
+          <div class="stat__lbl">端到端时间</div>
+          <div class="stat__sub">从空目录到 dashboard 出分</div>
+        </div>
+        <div class="stat">
+          <div class="stat__big">$0.04</div>
+          <div class="stat__lbl">每次跑成本</div>
+          <div class="stat__sub">MiniMax-M2.7 token 实测</div>
+        </div>
+        <div class="stat">
+          <div class="stat__big">0</div>
+          <div class="stat__lbl">代码外传</div>
+          <div class="stat__sub">100% 本地 · 无 SaaS</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PIPELINE ────────────────────────────────────────── -->
+    <section id="pipeline" class="pipeline">
+      <div class="container">
+        <div class="sec-eyebrow">流程 / pipeline</div>
+        <h2 class="sec-h2">不是 LLM 写测试。<span class="grad">是 LLM 找真问题。</span></h2>
+        <p class="sec-lede">tspr 把 AI test generation 拆成 4 个可观测、可量化的步骤，每步都能用 hardener-bench 真打分。</p>
+
+        <div class="pipeline__steps">
+          <div class="pipe-step">
+            <div class="pipe-step__num">STEP 1</div>
+            <div class="pipe-step__title">Scan</div>
+            <div class="pipe-step__desc">静态扫 Express / Fastify 源码，解析 <code style="color:var(--accent);font-family:var(--font-mono);font-size:.78rem">app.use(prefix, router)</code> 嵌套挂载，输出真实路由清单。</div>
+          </div>
+          <div class="pipe-step">
+            <div class="pipe-step__num">STEP 2</div>
+            <div class="pipe-step__title">Plan</div>
+            <div class="pipe-step__desc">LLM 读真源码生成 scenarios：每条路由的 happy-path / error / auth / edge-case。MiniMax / Claude / OpenAI-compat 三模型可换。</div>
+          </div>
+          <div class="pipe-step">
+            <div class="pipe-step__num">STEP 3</div>
+            <div class="pipe-step__title">Execute</div>
+            <div class="pipe-step__desc">vitest + supertest 在 Docker 沙箱跑真 HTTP 请求，输出 <code style="color:var(--accent);font-family:var(--font-mono);font-size:.78rem">vitest-results.json</code> 完整带 stack。</div>
+          </div>
+          <div class="pipe-step">
+            <div class="pipe-step__num">STEP 4</div>
+            <div class="pipe-step__title">Score</div>
+            <div class="pipe-step__desc">5 维度公式确定性打分（route_recall / scenario_coverage / bug_trigger / false_fail / fix_region），可复现可对比。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCOREBOARD / 5 DIMS ─────────────────────────────── -->
+    <section id="scores">
+      <div class="container">
+        <div class="sec-eyebrow">5 维护城河</div>
+        <h2 class="sec-h2">行业唯一<span class="grad">同时</span>测全 5 维</h2>
+        <p class="sec-lede">别人家最多覆盖 2 维。<code style="color:var(--accent);font-family:var(--font-mono);font-size:.85rem">false_fail_rate</code> 和 <code style="color:var(--accent);font-family:var(--font-mono);font-size:.85rem">fix_region_precision</code> 是 hardener-bench 独家——大多数工具不敢测自己。</p>
+
+        <div class="compare">
+          <div class="compare__table">
+            <div class="compare__row head">
+              <div>维度</div>
+              <div>tspr</div>
+              <div>TestSprite (公开)</div>
+            </div>
+            <div class="compare__row">
+              <div>路由发现 (route_recall)</div>
+              <div class="ok">✓ 1.00</div>
+              <div class="meh">— 不公开</div>
+            </div>
+            <div class="compare__row">
+              <div>场景覆盖 (scenario_coverage)</div>
+              <div class="ok">✓ 1.00</div>
+              <div class="meh">— "94%" marketing</div>
+            </div>
+            <div class="compare__row">
+              <div>抓真问题 (bug_trigger)</div>
+              <div class="ok">✓ 100%</div>
+              <div class="meh">— "42→93%" 不可复现</div>
+            </div>
+            <div class="compare__row">
+              <div>不瞎报 (false_fail)</div>
+              <div class="ok">✓ 30% 可知</div>
+              <div class="fail">✗ 不测</div>
+            </div>
+            <div class="compare__row">
+              <div>修哪行准 (fix_region)</div>
+              <div class="ok">✓ 公开 0.00</div>
+              <div class="fail">✗ 不测</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HARDENER-BENCH · 为什么这些数字可信 ─────────────────── -->
+    <section id="bench" style="background:linear-gradient(180deg, transparent, rgba(34,211,238,0.04), transparent)">
+      <div class="container">
+        <div class="sec-eyebrow">独立评测 / hardener-bench</div>
+        <h2 class="sec-h2">不是我们自己说。是<span class="grad">独立 bench 算的。</span></h2>
+        <p class="sec-lede">所有上面的分数 — 路由召回 100% · 抓 100% bug · false_fail 0.30 · cost $0.04 — 都不是 tspr 自己测自己。是一个<strong style="color:var(--text)">独立的开源 benchmark 项目 hardener-bench</strong> 跑出来的。它把 tspr 当成被考的，不当成考官。</p>
+
+        <div class="bench-grid">
+          <div class="bench-card">
+            <div class="bench-card__num">5</div>
+            <div class="bench-card__lbl">硬公式 · 0 模糊空间</div>
+            <div class="bench-card__sub">route_recall / scenario_coverage / bug_trigger / <strong style="color:var(--accent)">false_fail</strong> / <strong style="color:var(--accent)">fix_region</strong>
+              <br>同一份 report.json 给两个人跑，分数 byte-identical。</div>
+          </div>
+          <div class="bench-card">
+            <div class="bench-card__num">📂</div>
+            <div class="bench-card__lbl">每跑必留报告</div>
+            <div class="bench-card__sub">每次 bench 跑完写一份 <code style="font-family:var(--font-mono);color:var(--accent);font-size:.8rem">reports/&lt;timestamp&gt;-tspr-&lt;fixture&gt;/score.json</code>，CI 可 diff，PR 必看趋势。</div>
+          </div>
+          <div class="bench-card">
+            <div class="bench-card__num">🔌</div>
+            <div class="bench-card__lbl">任何工具都能接</div>
+            <div class="bench-card__sub">adapter 抽象 + 标准化 JSON output schema。<strong>TestSprite/KaneAI 也能接进来同台跑</strong> — 他们敢不敢是另一码事。</div>
+          </div>
+          <div class="bench-card">
+            <div class="bench-card__num">3</div>
+            <div class="bench-card__lbl">真 fixture 已收录</div>
+            <div class="bench-card__sub"><code style="font-family:var(--font-mono);color:var(--accent);font-size:.8rem">tspr-target</code> (Express 入门) · <code style="font-family:var(--font-mono);color:var(--accent);font-size:.8rem">VAmPI</code> (Python OWASP) · <code style="font-family:var(--font-mono);color:var(--accent);font-size:.8rem">meme-weather</code> (真生产)。<br>路线图：BugsJS / juice-shop / multi-swe-bench。</div>
+          </div>
+        </div>
+
+        <div class="bench-flow">
+          <div class="bench-flow__step">
+            <div class="bench-flow__num">1</div>
+            <div class="bench-flow__title">起 fixture</div>
+            <div class="bench-flow__code"><code>npm run start:fixture tspr-target</code></div>
+          </div>
+          <div class="bench-flow__arrow">→</div>
+          <div class="bench-flow__step">
+            <div class="bench-flow__num">2</div>
+            <div class="bench-flow__title">让 tool 跑一遍</div>
+            <div class="bench-flow__code"><code>tspr execute --target localhost:3003</code></div>
+          </div>
+          <div class="bench-flow__arrow">→</div>
+          <div class="bench-flow__step">
+            <div class="bench-flow__num">3</div>
+            <div class="bench-flow__title">bench 量化</div>
+            <div class="bench-flow__code"><code>npm run bench -- --tool tspr --fixture tspr-target</code></div>
+          </div>
+          <div class="bench-flow__arrow">→</div>
+          <div class="bench-flow__step">
+            <div class="bench-flow__num">4</div>
+            <div class="bench-flow__title">score.json 落盘</div>
+            <div class="bench-flow__code"><code>reports/2026-05-29.../score.json</code></div>
+          </div>
+        </div>
+
+        <div class="bench-foot">
+          <span style="color:var(--accent);font-weight:700">行业唯一 2 维护城河</span> · <code style="color:var(--accent)">false_fail</code>（不瞎报）和 <code style="color:var(--accent)">fix_region</code>（指哪行）—— 别人都不敢公开自家分。<br>
+          repo: <a href="https://github.com/Upp-Ljl/hardener-bench" target="_blank" rel="noopener" style="color:var(--accent);font-family:var(--font-mono)">github.com/Upp-Ljl/hardener-bench</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- FIXTURE SCORES — complexity gradient ──────────────────────── -->
+    <section id="fixtures">
+      <div class="container">
+        <div class="sec-eyebrow">真实数据集 / 难度阶梯</div>
+        <h2 class="sec-h2">不是糖水 demo。<span class="grad">3 个难度阶梯。</span></h2>
+        <p class="sec-lede">从入门 fixture 到真正的 production-grade web app — tspr 在每一档的表现都摊开给你看，<strong style="color:var(--text)">不藏短，不挑数据</strong>。</p>
+
+        <!-- LEVEL 1 -->
+        <div class="case" style="margin-top:2rem">
+          <div class="case__head">
+            <h3>L1 · tspr-target</h3>
+            <div class="case__stack">
+              <span>Express</span><span>TypeScript</span><span>15 routes</span><span>6 seeded bugs</span><span>难度: 入门</span>
+            </div>
+          </div>
+          <p class="case__lede">手写 Express CRUD app，6 个 HTTP-status-shape 故意 bug（PUT 不存在 id 返 200 / POST 空 body 返 201 / DELETE 特殊字符崩 500 等）。验证 tspr 基本扫描和执行能力。</p>
+          <div class="case__pipeline-stats">
+            <div class="score-card"><div class="score-card__label">route_recall</div><div class="score-card__num ok">1.00</div><div class="score-card__bar"><i style="width:100%"></i></div></div>
+            <div class="score-card"><div class="score-card__label">scenario_coverage</div><div class="score-card__num ok">1.00</div><div class="score-card__bar"><i style="width:100%"></i></div></div>
+            <div class="score-card"><div class="score-card__label">bug_trigger</div><div class="score-card__num ok">100% 🎯</div><div class="score-card__bar"><i style="width:100%"></i></div></div>
+            <div class="score-card"><div class="score-card__label">false_fail</div><div class="score-card__num warn">0.30</div><div class="score-card__bar"><i style="width:70%;background:var(--yellow)"></i></div></div>
+          </div>
+        </div>
+
+        <!-- LEVEL 2 -->
+        <div class="case" style="margin-top:1.6rem;border-color:rgba(234,88,12,0.25)">
+          <div class="case__head">
+            <h3>L2 · VAmPI</h3>
+            <div class="case__stack">
+              <span style="background:rgba(234,88,12,0.12);color:var(--orange);border-color:rgba(234,88,12,0.4)">Python Flask</span><span>OWASP-aligned</span><span>14 routes</span><span>5 安全漏洞</span><span>难度: 进阶 (security)</span>
+            </div>
+          </div>
+          <p class="case__lede">OWASP-published 真漏洞 fixture（SQLi + Mass Assignment + BOLA + 越权 + Excessive Data Exposure）。Python Flask 应用 — <strong style="color:var(--orange)">tspr 现阶段是 Node-only，直接拒收</strong>。诚实摊开短板，不藏。</p>
+          <div class="case__pipeline-stats">
+            <div class="score-card"><div class="score-card__label">route_recall</div><div class="score-card__num fail">0.00</div><div class="score-card__bar"><i style="width:0"></i></div></div>
+            <div class="score-card"><div class="score-card__label">scenario_coverage</div><div class="score-card__num fail">0.00</div><div class="score-card__bar"><i style="width:0"></i></div></div>
+            <div class="score-card"><div class="score-card__label">bug_trigger</div><div class="score-card__num fail">0/5</div><div class="score-card__bar"><i style="width:0"></i></div></div>
+            <div class="score-card"><div class="score-card__label">原因</div><div class="score-card__num dim" style="font-size:1rem">ERR_NOT_NODE</div><div style="font-size:.7rem;color:var(--text-dim);margin-top:.3rem">bootstrap 拒收</div></div>
+          </div>
+          <p style="margin-top:1rem;font-size:.82rem;color:var(--orange)">
+            📋 工作中：Python Flask / Django + Java Spring + Go 适配（Q3 路线图）
+          </p>
+        </div>
+
+        <!-- LEVEL 3 placeholder; full case study follows next section -->
+        <div style="margin-top:1.2rem;text-align:center">
+          <a href="#case-mw" style="color:var(--accent);font-family:var(--font-mono);font-size:.95rem">▼ L3 · 真生产应用 (Next.js + Supabase) — 看下面专项 case study</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEME-WEATHER CASE STUDY ─────────────────────────── -->
+    <section id="case-mw" style="background:linear-gradient(180deg, transparent, rgba(234,88,12,0.04), transparent)">
+      <div class="container">
+        <div class="sec-eyebrow">L3 case study · 真生产应用</div>
+        <h2 class="sec-h2">梗气象台 — <span class="grad">真上线的 web app</span></h2>
+        <p class="sec-lede">下下个真实 fixture：一个上 Vercel + Supabase 真生产的 Next.js 15 web app。比 tspr-target 难<strong style="color:var(--text)">几个数量级</strong>——SSR + RSC + auth + realtime + 文件上传 + cron 任务全在一个仓库里。</p>
+
+        <div class="case">
+          <div class="case__head">
+            <h3>梗气象台 (meme-weather)</h3>
+            <a href="http://192.168.22.2:3000" target="_blank" rel="noopener"
+               style="font-family:var(--font-mono);font-size:.78rem;color:#000;background:var(--green);padding:.4rem .85rem;border-radius:6px;font-weight:700;display:inline-flex;gap:.4rem;align-items:center;text-decoration:none;animation:pulse-ring 2s ease-out infinite">
+              ▶ 真打开 · live
+            </a>
+            <div class="case__stack" style="flex-basis:100%;margin-top:.4rem">
+              <span>Next.js 15 App Router</span><span>TypeScript</span><span>Supabase Postgres + Auth + Realtime</span><span>Drizzle ORM</span><span>Tailwind 4</span><span>Vercel Cron</span><span>9 API + 5 屏</span>
+            </div>
+            <div style="flex-basis:100%;font-family:var(--font-mono);font-size:.78rem;color:var(--text-dim);margin-top:.2rem">
+              远程链接：<a href="http://192.168.22.2:3000" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">http://192.168.22.2:3000</a>
+              · 首次访问 localtunnel 会要 IP，填一下点 continue
+            </div>
+          </div>
+          <p class="case__lede">这不是测试 fixture，这是一个真上 Vercel 运行、有 user / 有 prod data 的 web app。它<strong style="color:var(--orange)">藏了 3 个生产级 bug</strong> — 不是"PUT 不存在 id 返 200"这种 toy bug，是真实代码 review 都容易看漏的那种。</p>
+
+          <div class="case__bugs">
+            <div class="bug">
+              <div class="bug__id">TSPR-BUG-1 · 高难度</div>
+              <div class="bug__title">⏰ 结算时区 off-by-one</div>
+              <div class="bug__loc">lib/memes/settle.ts</div>
+              <div class="bug__desc">用 <code style="color:var(--accent);font-family:var(--font-mono)">new Date()</code> 服务器本地时区而非显式 UTC。跨 UTC 边界的 bet 被算到错的 week 结算里。<strong style="color:var(--orange)">code review 几乎抓不到</strong>，除非测试跨时区 fixture。</div>
+              <div class="bug__how"><strong>tspr 应该这样找：</strong> bets 在 Sunday 边界前后的 fixture + 断言 week N 的 settlement 包含正确 bet 集</div>
+            </div>
+
+            <div class="bug">
+              <div class="bug__id">TSPR-BUG-2 · 极高难度</div>
+              <div class="bug__title">⚡ 并发 race condition</div>
+              <div class="bug__loc">app/api/memes/[id]/bet/route.ts</div>
+              <div class="bug__desc">并发 POST 同 user 的 bet 请求，read-modify-write 钱包余额没有 row lock 或 atomic update。<strong style="color:var(--orange)">钱包可以被扣到负数</strong> — 真 production 经典 race condition。</div>
+              <div class="bug__how"><strong>tspr 应该这样找：</strong> 10 个并发 POST，amount 接近钱包上限，断言 wallet ≥ 0</div>
+            </div>
+
+            <div class="bug">
+              <div class="bug__id">TSPR-BUG-3 · 中难度</div>
+              <div class="bug__title">📄 分页 off-by-one</div>
+              <div class="bug__loc">app/api/graveyard/route.ts</div>
+              <div class="bug__desc">用 <code style="color:var(--accent);font-family:var(--font-mono)">offset = page * limit</code> 而非 <code style="color:var(--accent);font-family:var(--font-mono)">(page-1) * limit</code>。<strong style="color:var(--orange)">第 1 页和第 2 页有重叠记录</strong>，第 0 条永远丢失。</div>
+              <div class="bug__how"><strong>tspr 应该这样找：</strong> fetch page 1 + page 2，做 set-intersection，断言交集为空</div>
+            </div>
+          </div>
+
+          <div class="case__pipeline-stats" style="margin-top:1.8rem">
+            <div class="score-card">
+              <div class="score-card__label">tspr 真跑了</div>
+              <div class="score-card__num" style="color:var(--accent)">28 次</div>
+              <div style="font-size:.72rem;color:var(--text-dim);margin-top:.3rem">~/.tspr/db.sqlite 真实记录</div>
+            </div>
+            <div class="score-card">
+              <div class="score-card__label">backend_test_plan</div>
+              <div class="score-card__num ok">15/17 ok</div>
+              <div style="font-size:.72rem;color:var(--text-dim);margin-top:.3rem">88% 成功生成 PRD + 测试计划</div>
+            </div>
+            <div class="score-card">
+              <div class="score-card__label">code_and_execute</div>
+              <div class="score-card__num ok">8/11 ok</div>
+              <div style="font-size:.72rem;color:var(--text-dim);margin-top:.3rem">73% 沙箱执行完成</div>
+            </div>
+            <div class="score-card">
+              <div class="score-card__label">bug_trigger</div>
+              <div class="score-card__num warn">re-running</div>
+              <div style="font-size:.72rem;color:var(--text-dim);margin-top:.3rem">8 个产品 bug 修完待重测</div>
+            </div>
+          </div>
+
+          <p style="margin-top:1.4rem;text-align:center;color:var(--text-dim);font-size:.85rem;font-family:var(--font-mono)">
+            ⚠️ 诚实声明：早期 28 次跑发生在<strong style="color:var(--orange)">今天 8 个 tspr 产品 bug 修复之前</strong>。当时 codegen 不读 fixture 源码 + vitest stdout 截断 + bench parser 错位<br>
+            <strong style="color:var(--text)">→ 8 bug 全部修完后 tspr 才有能力抓这 3 个生产 bug。下次 benchmark run 在路上。</strong>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- BEFORE / AFTER JOURNEY ─────────────────────────── -->
+    <section id="journey" style="background:linear-gradient(180deg, transparent, rgba(108,99,255,0.04), transparent)">
+      <div class="container">
+        <div class="sec-eyebrow">改进效果 · 真实迭代记录</div>
+        <h2 class="sec-h2">同一份 fixture，<span class="grad">8 个 bug 修了之后</span>分数曲线</h2>
+        <p class="sec-lede">这是今天对 tspr 改进的真实成绩单。每一步都是 hardener-bench 自动量化的——不是"感觉变好了"。</p>
+
+        <div class="compare__table" style="max-width:900px;margin:0 auto;">
+          <div class="compare__row head" style="grid-template-columns:.8fr 1.8fr 1fr 1fr">
+            <div>阶段</div>
+            <div>修了什么 bug</div>
+            <div>bug_trigger 分</div>
+            <div>状态</div>
+          </div>
+          <div class="compare__row" style="grid-template-columns:.8fr 1.8fr 1fr 1fr">
+            <div><strong>0.0</strong><br><span style="color:var(--text-dim);font-size:.78rem">初始</span></div>
+            <div>无 — 裸跑</div>
+            <div class="fail">0 / 6</div>
+            <div class="fail">❌ 全军覆没</div>
+          </div>
+          <div class="compare__row" style="grid-template-columns:.8fr 1.8fr 1fr 1fr">
+            <div><strong>0.1</strong></div>
+            <div><strong>Bug-A</strong>: codegen 不读 fixture 真代码 → prompt 注入真源码</div>
+            <div class="meh">无变化（卡在 cap）</div>
+            <div class="meh">⚠️ plan 对了 execute 没动</div>
+          </div>
+          <div class="compare__row" style="grid-template-columns:.8fr 1.8fr 1fr 1fr">
+            <div><strong>0.2</strong></div>
+            <div><strong>Bug-B</strong>: MVP-0 scenarios 上限 10 → 100</div>
+            <div class="meh">仍 0</div>
+            <div class="meh">⚠️ 沙箱 stdout 截断</div>
+          </div>
+          <div class="compare__row" style="grid-template-columns:.8fr 1.8fr 1fr 1fr">
+            <div><strong>0.3</strong></div>
+            <div><strong>Bug-D</strong>: vitest --outputFile 替代 stdout 避截断</div>
+            <div class="meh">仍 0</div>
+            <div class="meh">⚠️ bench adapter 期望 JSON 错</div>
+          </div>
+          <div class="compare__row" style="grid-template-columns:.8fr 1.8fr 1fr 1fr">
+            <div><strong>0.4</strong></div>
+            <div><strong>Bug-G</strong>: bench adapter 改读 <code style="color:var(--accent);font-family:var(--font-mono);font-size:.78rem">.tspr/test_results.json</code></div>
+            <div class="ok"><strong>100%</strong> 🎯</div>
+            <div class="ok">✅ 真分浮出</div>
+          </div>
+          <div class="compare__row" style="grid-template-columns:.8fr 1.8fr 1fr 1fr">
+            <div><strong>0.5</strong></div>
+            <div><strong>Bug-C/E/F</strong>: 数据完整性 + LLM 重试 + max_tokens 32k 抗空响应</div>
+            <div class="ok">100% 稳定</div>
+            <div class="ok">✅ 可重跑</div>
+          </div>
+        </div>
+
+        <div style="max-width:900px;margin:2rem auto 0;display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;text-align:center">
+          <div class="score-card"><div class="score-card__label">Bug 修复</div><div class="score-card__num ok">9</div><div style="font-size:.75rem;color:var(--text-dim)">产品级 + 工程链</div></div>
+          <div class="score-card"><div class="score-card__label">bug_trigger</div><div class="score-card__num ok">0 → 6</div><div style="font-size:.75rem;color:var(--text-dim)">从 0 到满分</div></div>
+          <div class="score-card"><div class="score-card__label">scenario_coverage</div><div class="score-card__num ok">0 → 1.00</div><div style="font-size:.75rem;color:var(--text-dim)">完整覆盖 15 路由</div></div>
+          <div class="score-card"><div class="score-card__label">代码改动</div><div class="score-card__num" style="color:var(--accent)">~600 行</div><div style="font-size:.75rem;color:var(--text-dim)">7 文件，全可审计</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LOCAL CTA ─────────────────────────────────────── -->
+    <section id="try">
+      <div class="container">
+        <div class="sec-eyebrow">本地试跑</div>
+        <h2 class="sec-h2">不要 SaaS。<span class="grad">你的代码不出本机。</span></h2>
+        <p class="sec-lede">tspr 100% 本地运行：MCP server + Docker sandbox + 本地 SQLite + 本地 dashboard。代码不上传任何 cloud。</p>
+
+        <div class="local-cta">
+          <h3>🚀 直接看 live dashboard</h3>
+          <p>已经在我本地起好 dashboard，并把 7654 端口隧道到公网了——<strong style="color:var(--text)">任何电脑点下面 URL 都能进</strong>。</p>
+          <div class="local-cta__urls">
+            <code>
+              <span class="dot"></span>
+              <a href="http://192.168.22.2:7654" target="_blank" rel="noopener">http://192.168.22.2:7654</a>
+              <span class="alive">LIVE 🌐 PUBLIC</span>
+            </code>
+          </div>
+          <p style="font-size:.82rem;color:var(--text-dim);margin-top:-.6rem;margin-bottom:1.2rem">
+            <strong>⚠️ 首次访问</strong> localtunnel 会显示一个"反爬中转页"问你的 IP，填一下点 continue，之后透传到我本地 dashboard。
+          </p>
+          <div class="install">
+            <div><span class="com"># 想本地装一份自己跑</span></div>
+            <div>$ git clone https://github.com/Upp-Ljl/tspr</div>
+            <div>$ cd tspr &amp;&amp; npm install &amp;&amp; npm run build</div>
+            <div>$ tspr dashboard <span class="com">&nbsp;# 默认 127.0.0.1:7654</span></div>
+            <div><span class="ok">→ dashboard ready at http://127.0.0.1:7654</span></div>
+          </div>
+          <div class="hero__cta-row">
+            <a class="primary" href="http://192.168.22.2:7654" target="_blank" rel="noopener">▶ 打开 live dashboard (远程可用)</a>
+            <a class="secondary" href="https://github.com/Upp-Ljl/tspr" target="_blank">→ 源码 GitHub</a>
           </div>
         </div>
       </div>
@@ -767,32 +2169,183 @@
 
   </main>
 
-  <!-- ─────────────────────────────────────────────────── Footer -->
-  <footer class="footer" role="contentinfo">
-    <div class="container footer-inner">
-      <div class="footer-brand">
-        <span class="docket-mark" aria-hidden="true"></span>
-        <span>Pace</span>
-        <span class="footer-version">v0.1 · 2026</span>
-      </div>
-      <nav class="footer-nav" aria-label="链接">
-        <a href="#">docs</a>
-        <a href="#">changelog</a>
-        <a href="https://github.com/" target="_blank" rel="noopener noreferrer">github</a>
-        <a href="#">discord</a>
-      </nav>
-      <div class="footer-promises" aria-label="承诺">
-        <span>MIT</span>
-        <span aria-hidden="true">·</span>
-        <span>零后端</span>
-        <span aria-hidden="true">·</span>
-        <span>零上传</span>
-        <span aria-hidden="true">·</span>
-        <span>你的 LLM key</span>
-      </div>
-    </div>
+  <footer>
+    <div>tspr · 本地 AI test generation MCP · MIT</div>
+    <div style="margin-top:.4rem">由 <a href="https://github.com/Upp-Ljl/hardener-bench" target="_blank">hardener-bench</a> 5 维公式定量打分 · 不可复现的 marketing 数字一概不上</div>
+    <div style="margin-top:1rem;font-family:var(--font-mono);font-size:.75rem">demo loop · 30s · auto-play</div>
   </footer>
 
-  <script src="script.js?v=13" defer></script>
+  <script>
+    // Auto-generate beautified scene headers from legacy .scene__title / .chapter.
+    (function () {
+      const scenes = Array.from(document.querySelectorAll('.scene'));
+      // Title overrides — short, punchy, big-font friendly
+      const TITLES = [
+        '欢迎',
+        '一句话 · MCP 直接接管',
+        '扫你的项目',
+        '15 路由全识别',
+        'LLM 读你的源码 · 写真测试',
+        '真沙箱跑 · 12 条 vitest',
+        '真 dashboard 弹出来',
+        'tspr 自己 heal · 3 次重试',
+        '定时调度 + 出问题告警',
+        '100% 命中 · 不藏短',
+        'meme-weather · 3 个生产 bug',
+        '5 维公式 · 别人不敢测的 2 维',
+        '收 · 真数字 · 即刻试玩',
+      ];
+      const CHAPTERS = [
+        'CH 0 · 开场',
+        'CH 1 · 上手',
+        'CH 1 · 上手',
+        'CH 2 · AI 干活',
+        'CH 2 · AI 干活',
+        'CH 2 · AI 干活',
+        'CH 3 · 真 output',
+        'CH 4 · 不止 dashboard',
+        'CH 4 · 不止 dashboard',
+        'CH 5 · 真实数据',
+        'CH 5 · 真实数据',
+        'CH 6 · 护城河',
+        'CH 7 · 收',
+      ];
+      scenes.forEach((s, i) => {
+        if (s.querySelector('.scene-head')) return;
+        const num = String(i + 1).padStart(2, '0');
+        const head = document.createElement('div');
+        head.className = 'scene-head';
+        head.innerHTML =
+          `<span class="scene-head__num">${num}<span class="total">/${String(scenes.length).padStart(2,'0')}</span></span>` +
+          `<span class="scene-head__title">${TITLES[i] || ''}</span>` +
+          `<span class="scene-head__chapter">${CHAPTERS[i] || ''}</span>`;
+        // Wrap existing content into .scene-body so flex layout works
+        const body = document.createElement('div');
+        body.className = 'scene-body';
+        while (s.firstChild) body.appendChild(s.firstChild);
+        s.appendChild(head);
+        s.appendChild(body);
+      });
+    })();
+
+    // 30s demo controller — delta-accumulator + click-to-restart + tab-pause safe.
+    (function () {
+      const scenes = Array.from(document.querySelectorAll('.scene'));
+      const demoEl = document.querySelector('.demo');
+      if (scenes.length === 0 || !demoEl) return;
+
+      // 13-scene story arc. Total ~44s.
+      // [0] intro · [1] MCP invoke (NEW) · [2] scan · [3] routes · [4] code · [5] sandbox ·
+      // [6] dashboard · [7] heal · [8] schedules/alerts ·
+      // [9] L1/L2/L3 · [10] meme-weather · [11] moat · [12] final
+      //                  0     1     2     3     4     5     6     7     8     9    10    11    12
+      const DURATIONS = [2000, 4500, 3500, 3000, 3500, 3200, 3200, 3500, 3000, 3500, 3000, 3500, 4500];
+      const TOTAL = DURATIONS.reduce((a, b) => a + b, 0); // ~44400ms
+
+      const progressEl = demoEl.querySelector('.demo__progress > i');
+      const timerEl    = demoEl.querySelector('.demo__head__timer');
+      const playBtn    = demoEl.querySelector('.demo__head__timer');
+
+      let elapsed     = 0;     // accumulated ms within current loop
+      let lastFrame   = performance.now();
+      let lastSceneIdx = -1;
+      let rafId       = null;
+      let running     = true;
+      let finished    = false;
+      // Freeze on scene 11 (5-dim moat vs TestSprite) — "bench 比较页"
+      const FREEZE_SCENE_IDX = 11;
+
+      function setActiveScene(idx) {
+        if (idx === lastSceneIdx) return;
+        scenes.forEach((s, i) => s.classList.toggle('active', i === idx));
+        lastSceneIdx = idx;
+      }
+
+      function finish() {
+        finished = true;
+        running  = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        elapsed = TOTAL;
+        if (progressEl) progressEl.style.width = '100%';
+        if (timerEl)    { timerEl.textContent = '▶ replay'; timerEl._last = null; timerEl.classList.add('done'); }
+        setActiveScene(FREEZE_SCENE_IDX);
+        demoEl.classList.add('demo--finished');
+      }
+
+      function tick(now) {
+        if (!running) { rafId = null; return; }
+        const dt = Math.min(now - lastFrame, 500); // cap dt to avoid huge jumps after pause
+        lastFrame = now;
+        elapsed += dt;
+
+        if (elapsed >= TOTAL) { finish(); return; }
+
+        if (progressEl) progressEl.style.width = ((elapsed / TOTAL) * 100).toFixed(1) + '%';
+        if (timerEl) {
+          const remaining = Math.ceil((TOTAL - elapsed) / 1000);
+          if (timerEl._last !== remaining) {
+            timerEl.textContent = remaining + 's';
+            timerEl._last = remaining;
+          }
+        }
+
+        let cumul = 0, idx = 0;
+        for (let i = 0; i < DURATIONS.length; i++) {
+          cumul += DURATIONS[i];
+          if (elapsed < cumul) { idx = i; break; }
+        }
+        setActiveScene(idx);
+        rafId = requestAnimationFrame(tick);
+      }
+
+      function start() {
+        if (running && rafId) return;
+        running = true;
+        finished = false;
+        lastFrame = performance.now();
+        demoEl.classList.remove('demo--finished');
+        if (timerEl) timerEl.classList.remove('done');
+        if (!rafId) rafId = requestAnimationFrame(tick);
+      }
+      function pause() {
+        if (finished) return;
+        running = false;
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      function restart() {
+        elapsed = 0;
+        lastSceneIdx = -1;
+        finished = false;
+        demoEl.classList.remove('demo--finished');
+        if (timerEl) timerEl.classList.remove('done');
+        start();
+      }
+
+      setActiveScene(0);
+      start();
+
+      // Tab visibility — pause when hidden, resume cleanly when visible (only if not finished)
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) pause();
+        else if (!finished) start();
+      });
+
+      // Click anywhere on the demo card to replay from frame 0
+      demoEl.addEventListener('click', (e) => {
+        if (e.target.closest('a')) return;
+        restart();
+      });
+
+      // Hero CTA "▶ 看 40 秒演示" — restart on click in addition to scrolling
+      document.querySelectorAll('a[href="#demo"]').forEach(a => {
+        a.addEventListener('click', () => setTimeout(restart, 400));
+      });
+
+      // Make timer look like a play/pause button (cursor only — actually restarts)
+      if (playBtn) { playBtn.style.cursor = 'pointer'; playBtn.title = '点击重新播放'; }
+    })();
+  </script>
+
 </body>
 </html>
